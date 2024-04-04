@@ -3,3 +3,5 @@ obsolete
 .env
 .venv
 env
+casp-predictions
+casp-results
