@@ -11,7 +11,7 @@ def get_mahalanobis_dist(x, dist):
 
 def get_maha_for_row(dist_df, row):
     res = row['res']
-    if row.name % 100000 == 0:
+    if row.name % 10000 == 0:
         print(row.name)
     if res == 'X':
         return np.nan
