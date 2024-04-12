@@ -6,3 +6,5 @@ env
 casp-predictions
 casp-results
 matches.json
+phi_psi_mined_by_window.csv
+phi_psi_predictions_by_window.csv
