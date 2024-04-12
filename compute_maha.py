@@ -1,37 +1,61 @@
+from sklearn.cluster import DBSCAN
+import matplotlib.pyplot as plt
+from scipy.stats import gaussian_kde
 import numpy as np
-
-def get_mahalanobis_dist(x, dist):
-    # x should be 1 x n_features
-    # dist should be n_obs x n_features
-    icov = np.linalg.inv(np.cov(dist.T))
-    md = (x - dist.mean(axis=0)) @ icov @ (x - dist.mean(axis=0))
-    if md < 0:
-        print(x, dist.mean(axis=0), icov)
-    return np.sqrt(md)
-
-def get_maha_for_row(dist_df, row):
-    res = row['res']
-    if row.name % 10000 == 0:
-        print(row.name)
-    if res == 'X':
-        return np.nan
-    phi_psi = dist_df.loc[dist_df.res == res, ['phi','psi']].dropna().values
-    return get_mahalanobis_dist(row[['phi','psi']].values, phi_psi)
-
-import warnings
 import pandas as pd
-pdb_code = '6t1z'
+from tqdm import tqdm
 
-phi_psi_mined = pd.read_csv('phi_psi_mined.csv')
-phi_psi_predictions = pd.read_csv('phi_psi_predictions.csv')
+phi_psi_mined_by_window = pd.read_csv('phi_psi_mined_by_window.csv')
+phi_psi_predictions_by_window = pd.read_csv('phi_psi_predictions_by_window.csv')
+xray_phi_psi = pd.read_csv('xray_phi_psi.csv')
 
-phi_psi_mined_filtered = phi_psi_mined.copy()
-phi_psi_mined_filtered = phi_psi_mined_filtered[phi_psi_mined_filtered.protein_id != pdb_code.upper()]
-phi_psi_mined_filtered['source'] = 'Query (PDBMine)'
-phi_psi_predictions['source'] = 'Prediction'
+mds = []
+phi_psi_predictions_by_window['md'] = np.nan
+xray_phi_psi['md'] = np.nan
+for seq in tqdm(phi_psi_mined_by_window.seq.unique()):
+    phi_psi_dist = phi_psi_mined_by_window.loc[phi_psi_mined_by_window.seq == seq][['phi','psi']]
+    xray = xray_phi_psi[xray_phi_psi.seq == seq][['phi','psi']].values
+    preds = phi_psi_predictions_by_window.loc[phi_psi_predictions_by_window.seq == seq][['phi','psi']].values
 
-with warnings.catch_warnings():
-    warnings.simplefilter("ignore")
-    phi_psi_predictions['mahalanobis_dist'] = phi_psi_predictions.apply(lambda x: get_maha_for_row(phi_psi_mined_filtered, x), axis=1)
+    if phi_psi_dist.shape[0] < 2 or xray.shape[0] < 1 or preds.shape[0] < 1:
+        print(f'Skipping {seq} - not enough data points')
+        xray_phi_psi.loc[xray_phi_psi.seq == seq, 'md'] = np.nan
+        phi_psi_predictions_by_window.loc[phi_psi_predictions_by_window.seq == seq, 'md'] = np.nan        
+        continue
+    # Find clusters
+    clustering = DBSCAN(eps=10, min_samples=3).fit(phi_psi_dist.values)
+    phi_psi_dist['cluster'] = clustering.labels_
 
-phi_psi_predictions.to_csv('phi_psi_predictions_maha.csv', index=False)
+    # Find most probable data point and the cluster it belongs to
+    kernel = gaussian_kde(phi_psi_dist[['phi','psi']].T)
+    phi_psi_most_likely_idx = kernel(phi_psi_dist[['phi','psi']].T).argmax()
+    phi_psi_c = phi_psi_dist.loc[phi_psi_dist.cluster == phi_psi_dist.iloc[phi_psi_most_likely_idx].cluster, ['phi','psi']].values
+
+    # Mahalanobis distance to most common cluster
+    cov = np.cov(phi_psi_c.T)
+    if np.linalg.det(cov) == 0:
+        print(f'Skipping {seq} - singular matrix')
+        xray_phi_psi.loc[xray_phi_psi.seq == seq, 'md'] = np.nan
+        phi_psi_predictions_by_window.loc[phi_psi_predictions_by_window.seq == seq, 'md'] = np.nan
+        continue
+    icov = np.linalg.inv(cov)
+
+    # xray
+    md_xray = (xray - phi_psi_c.mean(axis=0)) @ icov @ (xray - phi_psi_c.mean(axis=0)).T
+    if np.any(md_xray < 0):
+        md_xray = np.nan
+    else:
+        md_xray = np.sqrt(md_xray)[0,0]
+    xray_phi_psi.loc[xray_phi_psi.seq == seq, 'md'] = md_xray
+
+    # All predictions
+    mean = phi_psi_dist[['phi','psi']].mean(axis=0).values
+    md = (np.expand_dims((preds - mean), 1) @ icov @ np.expand_dims((preds - mean), 2)).squeeze()
+    if np.any(md < 0):
+        md = np.nan
+    else:
+        md = np.sqrt(md)
+    phi_psi_predictions_by_window.loc[phi_psi_predictions_by_window.seq == seq, 'md'] = md
+
+phi_psi_predictions_by_window.to_csv('phi_psi_predictions_by_window_md.csv', index=False)
+xray_phi_psi.to_csv('xray_phi_psi_md.csv', index=False)
