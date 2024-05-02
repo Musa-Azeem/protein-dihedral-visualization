@@ -12,46 +12,50 @@ from pathlib import Path
 
 WINDOW_SIZE = 3
 WINDOW_SIZE_CONTEXT = 7
+WINDOW_SIZE_CONTEXT_SECONDARY = 5
 casp_protein_id = 'T1024'
-outdir = Path(f'csvs/{casp_protein_id}_win{WINDOW_SIZE}-{WINDOW_SIZE_CONTEXT}')
+outdir = Path(f'csvs/{casp_protein_id}_win{WINDOW_SIZE}-{WINDOW_SIZE_CONTEXT}-{WINDOW_SIZE_CONTEXT_SECONDARY}')
 
 phi_psi_mined = pd.read_csv(outdir / f'phi_psi_mined_win{WINDOW_SIZE}.csv')
 phi_psi_mined_ctxt = pd.read_csv(outdir / f'phi_psi_mined_win{WINDOW_SIZE_CONTEXT}.csv')
+phi_psi_mined_ctxt_2 = pd.read_csv(outdir / f'phi_psi_mined_win{WINDOW_SIZE_CONTEXT_SECONDARY}.csv')
 phi_psi_predictions = pd.read_csv(outdir / 'phi_psi_predictions.csv')
 xray_phi_psi = pd.read_csv(outdir / 'xray_phi_psi.csv')
 
 def get_md_for_all_predictions(eps=10):
-    mds = []
     phi_psi_predictions['md'] = np.nan
     xray_phi_psi['md'] = np.nan
-    for i,seq in tqdm(enumerate(phi_psi_mined_ctxt.seq.unique())):
+    for i,seq in tqdm(enumerate(phi_psi_predictions.seq_ctxt.unique())):
         inner_seq = seq[WINDOW_SIZE_CONTEXT // 2 - WINDOW_SIZE // 2:WINDOW_SIZE_CONTEXT // 2 + WINDOW_SIZE // 2 + 1]
+        secondary_inner_seq = seq[WINDOW_SIZE_CONTEXT // 2 - WINDOW_SIZE_CONTEXT_SECONDARY // 2:WINDOW_SIZE_CONTEXT_SECONDARY // 2 + WINDOW_SIZE_CONTEXT // 2 + 1]
         phi_psi_dist = phi_psi_mined.loc[phi_psi_mined.seq == inner_seq][['phi','psi']]
         phi_psi_ctxt_dist = phi_psi_mined_ctxt.loc[phi_psi_mined_ctxt.seq == seq][['phi','psi']]
-        print(phi_psi_dist.shape)
-        print(phi_psi_ctxt_dist.shape)
+        phi_psi_ctxt_dist_2 = phi_psi_mined_ctxt_2.loc[phi_psi_mined_ctxt_2.seq == secondary_inner_seq][['phi','psi']]
+        print(f'{seq}: {phi_psi_dist.shape[0]} {phi_psi_ctxt_dist.shape[0]} {phi_psi_ctxt_dist_2.shape[0]}')
+
+        if phi_psi_ctxt_dist.shape[0] > 2:
+            print('Enough context data for KDE - Using Full Context')
+            dist = phi_psi_ctxt_dist[['phi','psi']].values.T
+        elif phi_psi_ctxt_dist_2.shape[0] > 2:
+            dist = phi_psi_ctxt_dist_2[['phi','psi']].values.T
+        elif phi_psi_dist.shape[0] > 2:
+            print('Not enough secondary context data for KDE - Using base window size')
+            dist = phi_psi_dist[['phi','psi']].values.T
+        else:
+            print(f'Skipping {seq} - not enough data points')
+            # leave as nan
+            continue
 
         xray = xray_phi_psi[xray_phi_psi.seq_ctxt == seq][['phi','psi']].values
         preds = phi_psi_predictions.loc[phi_psi_predictions.seq_ctxt == seq][['phi','psi']].values
+        print(xray.shape, preds.shape, dist.shape)
 
-        if phi_psi_dist.shape[0] < 2 or xray.shape[0] < 1 or preds.shape[0] < 1:
-            print(f'Skipping {seq} - not enough data points')
-            xray_phi_psi.loc[xray_phi_psi.seq_ctxt == seq, 'md'] = np.nan
-            phi_psi_predictions.loc[phi_psi_predictions.seq_ctxt == seq, 'md'] = np.nan        
-            continue
         # Find clusters
         clustering = DBSCAN(eps=eps, min_samples=3).fit(phi_psi_dist.values)
         phi_psi_dist['cluster'] = clustering.labels_
 
         # Find most probable data point from context dist and the cluster it belongs to
-        if phi_psi_ctxt_dist.shape[0] == 0:
-            print('No context data - Using smaller window size')
-            kernel = gaussian_kde(phi_psi_dist[['phi','psi']].T)
-        elif phi_psi_ctxt_dist.shape[0] < 3:
-            print('Not enough context data for KDE - Using smaller window size')
-            kernel = gaussian_kde(phi_psi_dist[['phi','psi']].T)
-        else:
-            kernel = gaussian_kde(phi_psi_ctxt_dist[['phi','psi']].T)
+        kernel = gaussian_kde(dist)
         phi_psi_most_likely_idx = kernel(phi_psi_dist[['phi','psi']].T).argmax()
         phi_psi_c = phi_psi_dist.loc[phi_psi_dist.cluster == phi_psi_dist.iloc[phi_psi_most_likely_idx].cluster, ['phi','psi']].values
 
@@ -59,29 +63,35 @@ def get_md_for_all_predictions(eps=10):
         cov = np.cov(phi_psi_c.T)
         if np.linalg.det(cov) == 0:
             print(f'Skipping {seq} - singular matrix')
-            xray_phi_psi.loc[xray_phi_psi.seq_ctxt == seq, 'md'] = np.nan
-            phi_psi_predictions.loc[phi_psi_predictions.seq == seq, 'md'] = np.nan
+            # leave as nan
             continue
         icov = np.linalg.inv(cov)
+        mean = phi_psi_c.mean(axis=0)
 
-        # xray
-        md_xray = (xray - phi_psi_c.mean(axis=0)) @ icov @ (xray - phi_psi_c.mean(axis=0)).T
-        if np.any(md_xray < 0):
-            md_xray = np.nan
+        md_xray = np.nan
+        if xray.shape[0] > 0:
+            # xray
+            md_xray = (xray - mean) @ icov @ (xray - mean).T
+            if np.any(md_xray < 0):
+                md_xray = np.nan
+            else:
+                md_xray = np.sqrt(md_xray)[0,0]
+            xray_phi_psi.loc[xray_phi_psi.seq_ctxt == seq, 'md'] = md_xray
         else:
-            md_xray = np.sqrt(md_xray)[0,0]
-        xray_phi_psi.loc[xray_phi_psi.seq_ctxt == seq, 'md'] = md_xray
+            print(f'No xray seq {seq}')
 
         # All predictions
-        mean = phi_psi_dist[['phi','psi']].mean(axis=0).values
-        md = (np.expand_dims((preds - mean), 1) @ icov @ np.expand_dims((preds - mean), 2)).squeeze()
-        if np.any(md < 0):
-            md = np.nan
+        if preds.shape[0] > 0:
+            md = (np.expand_dims((preds - mean), 1) @ icov @ np.expand_dims((preds - mean), 2)).squeeze()
+            if np.any(md < 0):
+                md = np.nan
+            else:
+                md = np.sqrt(md)
+            phi_psi_predictions.loc[phi_psi_predictions.seq_ctxt == seq, 'md'] = md
         else:
-            md = np.sqrt(md)
-        phi_psi_predictions.loc[phi_psi_predictions.seq_ctxt == seq, 'md'] = md
+            print(f'No predictions seq {seq}')
 
-    phi_psi_predictions.to_csv(outdir / f'phi_psi_predictions_md-eps{eps}.csv', index=False)
-    xray_phi_psi.to_csv(outdir / f'xray_phi_psi_md-eps{eps}.csv', index=False)
 eps=1.5
 get_md_for_all_predictions(eps)
+phi_psi_predictions.to_csv(outdir / f'phi_psi_predictions_md-eps{eps}.csv', index=False)
+xray_phi_psi.to_csv(outdir / f'xray_phi_psi_md-eps{eps}.csv', index=False)
