@@ -9,55 +9,93 @@ from sklearn.cluster import DBSCAN
 import matplotlib.pyplot as plt
 from scipy.stats import gaussian_kde
 from pathlib import Path
+from sklearn.neighbors import NearestNeighbors
 
-WINDOW_SIZE = 3
-WINDOW_SIZE_CONTEXT = 7
-WINDOW_SIZE_CONTEXT_SECONDARY = 5
-casp_protein_id = 'T1024'
-outdir = Path(f'csvs/{casp_protein_id}_win{WINDOW_SIZE}-{WINDOW_SIZE_CONTEXT}-{WINDOW_SIZE_CONTEXT_SECONDARY}')
+WINDOW_SIZE = 5
+WINDOW_SIZE_CONTEXT = 6
+
+def get_center(seq):
+    if WINDOW_SIZE % 2 == 0:
+        return seq[WINDOW_SIZE // 2 - 1]
+    else:
+        return seq[-WINDOW_SIZE // 2]
+def get_seq(i):
+    if WINDOW_SIZE % 2 == 0:
+        if WINDOW_SIZE_CONTEXT % 2 == 0:
+            return slice(i-WINDOW_SIZE//2+1,i+WINDOW_SIZE//2+1)
+        return slice(i-WINDOW_SIZE//2,i+WINDOW_SIZE//2)
+    else:
+        return slice(i-WINDOW_SIZE//2,i+WINDOW_SIZE//2+1)
+def get_seq_ctxt(i):
+    if WINDOW_SIZE_CONTEXT % 2 == 0:
+        return slice(i-WINDOW_SIZE_CONTEXT//2+1,i+WINDOW_SIZE_CONTEXT//2+1)
+    return slice(i-WINDOW_SIZE_CONTEXT//2,i+WINDOW_SIZE_CONTEXT//2+1)
+def get_subseq(seq):
+    if WINDOW_SIZE % 2 == 0:
+        return seq[WINDOW_SIZE_CONTEXT//2 - WINDOW_SIZE//2:WINDOW_SIZE_CONTEXT//2 + WINDOW_SIZE//2]
+    else:
+        if WINDOW_SIZE_CONTEXT % 2 == 0:
+            return seq[WINDOW_SIZE_CONTEXT//2 - WINDOW_SIZE//2-1:WINDOW_SIZE_CONTEXT//2 + WINDOW_SIZE//2]
+        return seq[WINDOW_SIZE_CONTEXT//2 - WINDOW_SIZE//2:WINDOW_SIZE_CONTEXT//2 + WINDOW_SIZE//2 + 1]
+
+
+casp_protein_id = 'T1030'
+outdir = Path(f'csvs/{casp_protein_id}_win{WINDOW_SIZE}-{WINDOW_SIZE_CONTEXT}')
 
 phi_psi_mined = pd.read_csv(outdir / f'phi_psi_mined_win{WINDOW_SIZE}.csv')
 phi_psi_mined_ctxt = pd.read_csv(outdir / f'phi_psi_mined_win{WINDOW_SIZE_CONTEXT}.csv')
-phi_psi_mined_ctxt_2 = pd.read_csv(outdir / f'phi_psi_mined_win{WINDOW_SIZE_CONTEXT_SECONDARY}.csv')
 phi_psi_predictions = pd.read_csv(outdir / 'phi_psi_predictions.csv')
 xray_phi_psi = pd.read_csv(outdir / 'xray_phi_psi.csv')
 
-def get_md_for_all_predictions(eps=10):
+kdews = [1,128]
+bw_method = 0.1
+eps=1.5
+
+def get_md_for_all_predictions(eps=10, bw_method=None, kdews=None):
+    kdews = kdews or [1,128]
     phi_psi_predictions['md'] = np.nan
     xray_phi_psi['md'] = np.nan
     for i,seq in tqdm(enumerate(phi_psi_predictions.seq_ctxt.unique())):
-        inner_seq = seq[WINDOW_SIZE_CONTEXT // 2 - WINDOW_SIZE // 2:WINDOW_SIZE_CONTEXT // 2 + WINDOW_SIZE // 2 + 1]
-        secondary_inner_seq = seq[WINDOW_SIZE_CONTEXT // 2 - WINDOW_SIZE_CONTEXT_SECONDARY // 2:WINDOW_SIZE_CONTEXT_SECONDARY // 2 + WINDOW_SIZE_CONTEXT // 2 + 1]
+        inner_seq = get_subseq(seq)
         phi_psi_dist = phi_psi_mined.loc[phi_psi_mined.seq == inner_seq][['phi','psi']]
         phi_psi_ctxt_dist = phi_psi_mined_ctxt.loc[phi_psi_mined_ctxt.seq == seq][['phi','psi']]
-        phi_psi_ctxt_dist_2 = phi_psi_mined_ctxt_2.loc[phi_psi_mined_ctxt_2.seq == secondary_inner_seq][['phi','psi']]
-        print(f'{seq}: {phi_psi_dist.shape[0]} {phi_psi_ctxt_dist.shape[0]} {phi_psi_ctxt_dist_2.shape[0]}')
+        print(f'{seq}: {phi_psi_dist.shape[0]} {phi_psi_ctxt_dist.shape[0]}')
 
         if phi_psi_ctxt_dist.shape[0] > 2:
             print('Enough context data for KDE - Using Full Context')
-            dist = phi_psi_ctxt_dist[['phi','psi']].values.T
-        elif phi_psi_ctxt_dist_2.shape[0] > 2:
-            dist = phi_psi_ctxt_dist_2[['phi','psi']].values.T
-        elif phi_psi_dist.shape[0] > 2:
-            print('Not enough secondary context data for KDE - Using base window size')
-            dist = phi_psi_dist[['phi','psi']].values.T
-        else:
+        if phi_psi_dist.shape[0] <= 2:
             print(f'Skipping {seq} - not enough data points')
             # leave as nan
             continue
 
         xray = xray_phi_psi[xray_phi_psi.seq_ctxt == seq][['phi','psi']].values
         preds = phi_psi_predictions.loc[phi_psi_predictions.seq_ctxt == seq][['phi','psi']].values
-        print(xray.shape, preds.shape, dist.shape)
+        print(xray.shape, preds.shape, phi_psi_dist.shape, phi_psi_ctxt_dist.shape)
 
         # Find clusters
         clustering = DBSCAN(eps=eps, min_samples=3).fit(phi_psi_dist.values)
         phi_psi_dist['cluster'] = clustering.labels_
 
         # Find most probable data point from context dist and the cluster it belongs to
-        kernel = gaussian_kde(dist)
-        phi_psi_most_likely_idx = kernel(phi_psi_dist[['phi','psi']].T).argmax()
-        phi_psi_c = phi_psi_dist.loc[phi_psi_dist.cluster == phi_psi_dist.iloc[phi_psi_most_likely_idx].cluster, ['phi','psi']].values
+        # Find most probable data point from distribution
+        phi_psi_dist['weight'] = kdews[0]
+        phi_psi_ctxt_dist['weight'] = kdews[1]
+        phi_psi_dist = pd.concat([phi_psi_dist, phi_psi_ctxt_dist])
+        kernel = gaussian_kde(phi_psi_dist[['phi','psi']].T, weights=phi_psi_dist['weight'], bw_method=bw_method)
+
+        x_grid, y_grid = np.meshgrid(np.linspace(-180, 180, 360), np.linspace(-180, 180, 360))
+        grid = np.vstack([x_grid.ravel(), y_grid.ravel()])
+        z = kernel(grid).reshape(x_grid.shape)
+
+        phi = grid[0,z.argmax()]
+        psi = grid[1,z.argmax()]
+        neigh = NearestNeighbors(radius=1).fit(phi_psi_dist[['phi','psi']].dropna().values)
+        nearest = neigh.kneighbors([[phi,psi]], 1, return_distance=False)
+        phi_psi_dist_c = phi_psi_dist.loc[phi_psi_dist.cluster == phi_psi_dist.iloc[nearest[0]].cluster.values[0]]
+        if phi_psi_dist_c.shape[0] == 0:
+            print('Using entire dist')
+            phi_psi_dist_c = phi_psi_dist
+        phi_psi_c = phi_psi_dist_c[['phi', 'psi']].values
 
         # Mahalanobis distance to most common cluster
         cov = np.cov(phi_psi_c.T)
@@ -91,7 +129,10 @@ def get_md_for_all_predictions(eps=10):
         else:
             print(f'No predictions seq {seq}')
 
+    phi_psi_predictions.to_csv(outdir / f'phi_psi_predictions_md-eps{eps}.csv', index=False)
+    xray_phi_psi.to_csv(outdir / f'xray_phi_psi_md-eps{eps}.csv', index=False)
+
 eps=1.5
-get_md_for_all_predictions(eps)
-phi_psi_predictions.to_csv(outdir / f'phi_psi_predictions_md-eps{eps}.csv', index=False)
-xray_phi_psi.to_csv(outdir / f'xray_phi_psi_md-eps{eps}.csv', index=False)
+bw_method=0.1
+kdews=[1,128]
+get_md_for_all_predictions(eps, bw_method, kdews)
