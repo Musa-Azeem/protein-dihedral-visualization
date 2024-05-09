@@ -55,7 +55,7 @@ def get_md_for_all_predictions(eps=10, bw_method=None, kdews=None):
     kdews = kdews or [1,128]
     phi_psi_predictions['md'] = np.nan
     xray_phi_psi['md'] = np.nan
-    for i,seq in tqdm(enumerate(phi_psi_predictions.seq_ctxt.unique())):
+    for i,seq in enumerate(phi_psi_predictions.seq_ctxt.unique()):
         inner_seq = get_subseq(seq)
         phi_psi_dist = phi_psi_mined.loc[phi_psi_mined.seq == inner_seq][['phi','psi']]
         phi_psi_ctxt_dist = phi_psi_mined_ctxt.loc[phi_psi_mined_ctxt.seq == seq][['phi','psi']]
@@ -72,29 +72,7 @@ def get_md_for_all_predictions(eps=10, bw_method=None, kdews=None):
         preds = phi_psi_predictions.loc[phi_psi_predictions.seq_ctxt == seq][['phi','psi']].values
         print(xray.shape, preds.shape, phi_psi_dist.shape, phi_psi_ctxt_dist.shape)
 
-        # Find clusters
-        clustering = DBSCAN(eps=eps, min_samples=3).fit(phi_psi_dist.values)
-        phi_psi_dist['cluster'] = clustering.labels_
-
-        # Find most probable data point from context dist and the cluster it belongs to
-        # Find most probable data point from distribution
-        phi_psi_dist['weight'] = kdews[0]
-        phi_psi_ctxt_dist['weight'] = kdews[1]
-        phi_psi_dist = pd.concat([phi_psi_dist, phi_psi_ctxt_dist])
-        kernel = gaussian_kde(phi_psi_dist[['phi','psi']].T, weights=phi_psi_dist['weight'], bw_method=bw_method)
-
-        x_grid, y_grid = np.meshgrid(np.linspace(-180, 180, 360), np.linspace(-180, 180, 360))
-        grid = np.vstack([x_grid.ravel(), y_grid.ravel()])
-        z = kernel(grid).reshape(x_grid.shape)
-
-        phi = grid[0,z.argmax()]
-        psi = grid[1,z.argmax()]
-        neigh = NearestNeighbors(radius=1).fit(phi_psi_dist[['phi','psi']].dropna().values)
-        nearest = neigh.kneighbors([[phi,psi]], 1, return_distance=False)
-        phi_psi_dist_c = phi_psi_dist.loc[phi_psi_dist.cluster == phi_psi_dist.iloc[nearest[0]].cluster.values[0]]
-        if phi_psi_dist_c.shape[0] == 0:
-            print('Using entire dist')
-            phi_psi_dist_c = phi_psi_dist
+        phi_psi_dist, phi_psi_dist_c, most_likely = find_phi_psi_c(phi_psi_dist, phi_psi_ctxt_dist, eps, bw_method, kdews)
         phi_psi_c = phi_psi_dist_c[['phi', 'psi']].values
 
         # Mahalanobis distance to most common cluster
