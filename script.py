@@ -316,11 +316,14 @@ get_md_for_all_predictions(eps, bw_method, kdews)
 def filter_and_sum(series):
     series = series[series < series.quantile(0.80)]
     return series.sum()
+def calc_perc_na(series):
+    return series.sum() / len(series)
 
 def plot_md_vs_rmsd(rmsd_lim=np.inf, md_lim_low=0, md_lim=np.inf):
-    group_maha = phi_psi_predictions.groupby('protein_id', as_index=False).agg({'md': filter_and_sum})
+    phi_psi_predictions['md_na'] = phi_psi_predictions.md.isna()
+    group_maha = phi_psi_predictions.groupby('protein_id', as_index=False).agg({'md': filter_and_sum, 'md_na':calc_perc_na})
     group_maha = group_maha.merge(results[['Model', 'RMS_CA']], left_on='protein_id', right_on='Model', how='inner')
-    group_maha = group_maha[group_maha.md_na <= group_maha.md_na.quantile(0.90)]
+    group_maha = group_maha[group_maha.md_na <= group_maha.md_na.quantile(0.10)]
     group_maha = group_maha[(group_maha.RMS_CA < rmsd_lim) & (group_maha.md > md_lim_low) & (group_maha.md < md_lim)].dropna()
 
     regr = linregress(group_maha.md, group_maha.RMS_CA)
