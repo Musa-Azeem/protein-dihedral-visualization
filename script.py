@@ -13,30 +13,36 @@ import json
 from Bio.PDB.ic_rebuild import structure_rebuild_test
 import numpy as np
 import sys
-import seaborn as sns
-from Bio.Align import PairwiseAligner
-import matplotlib.pyplot as plt
 from sklearn.cluster import DBSCAN
-import matplotlib.pyplot as plt
 from scipy.stats import gaussian_kde
 from scipy.stats import linregress
 
 load_dotenv()
 amino_acid_codes = json.load(open('amino_acid_codes.json'))
+PDBMINE_URL = os.getenv("PDBMINE_URL")
 
-WINDOW_SIZE, WINDOW_SIZE_CONTEXT = sys.argv[1:]
+WINDOW_SIZE, WINDOW_SIZE_CONTEXT, eps, bw_method = sys.argv[1:]
+WINDOW_SIZE = int(WINDOW_SIZE)
+WINDOW_SIZE_CONTEXT = int(WINDOW_SIZE_CONTEXT)
+eps = float(eps)
+bw_method = float(bw_method) if bw_method.lower() != 'none' else None
+print(WINDOW_SIZE, WINDOW_SIZE_CONTEXT, eps, bw_method)
 
 # Protein info
 casp_protein_id = 'T1030'
 casp_protein_id2 = 'T1030'
 pdb_code = '6poo'
-alphafold_id = f'{casp_protein_id}TS427_1'
+
+# casp_protein_id = 'T1024'
+# casp_protein_id2 = 'T1024'
+# pdb_code = '6t1z'
+
 outdir = Path(f'tests/{casp_protein_id}_win{WINDOW_SIZE}-{WINDOW_SIZE_CONTEXT}')
 if outdir.exists():
     print('Results already exist')
 else:
     outdir.mkdir(exist_ok=False, parents=True)
-outfile = 'results.csv'
+outfile = Path('results.txt')
 
 # Helpers
 def get_center(seq):
@@ -116,24 +122,31 @@ def get_phi_psi_for_structure(protein_structure, protein_id):
         phi_psi_.append([i, seq, seq_ctxt, res, phi, psi, xray_chain.id, protein_id])
     return phi_psi_
 
-xray_phi_psi = get_phi_psi_for_structure(xray_chain, pdb_code)
-xray_phi_psi = pd.DataFrame(xray_phi_psi, columns=['pos', 'seq', 'seq_ctxt', 'res', 'phi', 'psi', 'chain', 'protein_id'])
-xray_phi_psi.to_csv(outdir / 'xray_phi_psi.csv', index=False)
+if not (outdir / 'xray_phi_psi.csv').exists():
+    xray_phi_psi = get_phi_psi_for_structure(xray_chain, pdb_code)
+    xray_phi_psi = pd.DataFrame(xray_phi_psi, columns=['pos', 'seq', 'seq_ctxt', 'res', 'phi', 'psi', 'chain', 'protein_id'])
+    xray_phi_psi.to_csv(outdir / 'xray_phi_psi.csv', index=False)
+else:
+    xray_phi_psi = pd.read_csv(outdir / 'xray_phi_psi.csv')
 
 # Get phi_psi's of each prediction
-phi_psi_predictions_ = []
-for prediction_pdb in tqdm((predictions_dir / casp_protein_id).iterdir()):
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        prediction = parser.get_structure(prediction_pdb.name, prediction_pdb)
-        try:
-            chain = list(prediction[0].get_chains())[0]
-            phi_psi_predictions_ += get_phi_psi_for_structure(chain, prediction.id)
-        except Exception as e:
-            print(e)
-phi_psi_predictions = pd.DataFrame(phi_psi_predictions_, columns=['pos', 'seq', 'seq_ctxt', 'res', 'phi', 'psi', 'chain', 'protein_id'])
-phi_psi_predictions.to_csv(outdir / 'phi_psi_predictions.csv', index=False)
+if not (outdir / 'phi_psi_predictions.csv').exists():
 
+    phi_psi_predictions_ = []
+    for prediction_pdb in tqdm((predictions_dir / casp_protein_id).iterdir()):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            prediction = parser.get_structure(prediction_pdb.name, prediction_pdb)
+            try:
+                chain = list(prediction[0].get_chains())[0]
+                phi_psi_predictions_ += get_phi_psi_for_structure(chain, prediction.id)
+            except Exception as e:
+                print(e)
+
+    phi_psi_predictions = pd.DataFrame(phi_psi_predictions_, columns=['pos', 'seq', 'seq_ctxt', 'res', 'phi', 'psi', 'chain', 'protein_id'])
+    phi_psi_predictions.to_csv(outdir / 'phi_psi_predictions.csv', index=False)
+else:
+    phi_psi_predictions = pd.read_csv(outdir / 'phi_psi_predictions.csv')
 
 # ------------------------ PDBMine -------------------------------------------
 # Get Phi-Psi distribution from PDBMine
@@ -150,8 +163,8 @@ def query_pdbmine(window_size):
     for i in range(0, len(residue_chain), 100-window_size+1):
         broken_chains.append(residue_chain[i:i+100])
 
-    match_outdir = outdir / f'matches-{window_size}'
-    match_outdir.mkdir(exist_ok=False)
+    match_outdir = Path(f'cache/{casp_protein_id}/matches-{window_size}')
+    match_outdir.mkdir(exist_ok=False, parents=True)
 
     for i,chain in enumerate(tqdm(broken_chains)):
         if len(chain) < window_size: # in case the last chain is too short
@@ -181,15 +194,17 @@ def query_pdbmine(window_size):
                 time.sleep(15)
         print(f'Received matches - {i}')
         json.dump(matches, open(match_outdir / f'matches-win{window_size}_{i}.json', 'w'), indent=4)
-query_pdbmine(WINDOW_SIZE)
-query_pdbmine(WINDOW_SIZE_CONTEXT)
+if not Path(f'cache/{casp_protein_id}/matches-{WINDOW_SIZE}').exists():
+    query_pdbmine(WINDOW_SIZE)
+if not Path(f'cache/{casp_protein_id}/matches-{WINDOW_SIZE_CONTEXT}').exists():
+    query_pdbmine(WINDOW_SIZE_CONTEXT)
 
 # Get phi-psi from PDBMine matches
 # If any sequence appears twice, only take the first one bc the distribution is the same
 def get_phi_psi_mined(window_size):
     seqs = []
     phi_psi_mined = []
-    for matches in Path(outdir / f'matches-{window_size}').iterdir():
+    for matches in Path(f'cache/{casp_protein_id}/matches-{window_size}').iterdir():
         matches = json.load(matches.open())
         for seq_win,v in matches.items():
             seq = seq_win[4:]
@@ -207,7 +222,6 @@ def get_phi_psi_mined(window_size):
     phi_psi_mined = pd.DataFrame(phi_psi_mined, columns=['seq', 'res', 'phi', 'psi', 'chain', 'protein_id'])
     phi_psi_mined.to_csv(outdir / f'phi_psi_mined_win{window_size}.csv', index=False)
     return phi_psi_mined
-
 phi_psi_mined = get_phi_psi_mined(WINDOW_SIZE)
 phi_psi_mined_ctxt = get_phi_psi_mined(WINDOW_SIZE_CONTEXT)
 
@@ -256,10 +270,10 @@ def get_md_for_all_predictions(eps=10, bw_method=None, kdews=None):
 
         xray = xray_phi_psi[xray_phi_psi.seq_ctxt == seq][['phi','psi']].values
         preds = phi_psi_predictions.loc[phi_psi_predictions.seq_ctxt == seq][['phi','psi']].values
-        print(xray.shape, preds.shape, phi_psi_dist.shape, phi_psi_ctxt_dist.shape)
 
         phi_psi_dist, phi_psi_dist_c, most_likely = find_phi_psi_c(phi_psi_dist, phi_psi_ctxt_dist, eps, bw_method, kdews)
         phi_psi_c = phi_psi_dist_c[['phi', 'psi']].values
+        print(xray.shape, preds.shape, phi_psi_dist.shape, phi_psi_ctxt_dist.shape, phi_psi_dist_c.shape)
 
         # Mahalanobis distance to most common cluster
         cov = np.cov(phi_psi_c.T)
@@ -296,16 +310,25 @@ def get_md_for_all_predictions(eps=10, bw_method=None, kdews=None):
     phi_psi_predictions.to_csv(outdir / f'phi_psi_predictions_md-eps{eps}.csv', index=False)
     xray_phi_psi.to_csv(outdir / f'xray_phi_psi_md-eps{eps}.csv', index=False)
         
-eps=5
-bw_method=0.1
 kdews=[1,128]
 get_md_for_all_predictions(eps, bw_method, kdews)
+
+def filter_and_sum(series):
+    series = series[series < series.quantile(0.80)]
+    return series.sum()
 
 def plot_md_vs_rmsd(rmsd_lim=np.inf, md_lim_low=0, md_lim=np.inf):
     group_maha = phi_psi_predictions.groupby('protein_id', as_index=False).agg({'md': filter_and_sum})
     group_maha = group_maha.merge(results[['Model', 'RMS_CA']], left_on='protein_id', right_on='Model', how='inner')
+    group_maha = group_maha[group_maha.md_na <= group_maha.md_na.quantile(0.90)]
     group_maha = group_maha[(group_maha.RMS_CA < rmsd_lim) & (group_maha.md > md_lim_low) & (group_maha.md < md_lim)].dropna()
 
     regr = linregress(group_maha.md, group_maha.RMS_CA)
     print(f"R-squared: {regr.rvalue**2:.6f}")
-plot_md_vs_rmsd()
+    return regr.rvalue**2
+
+rsquared = plot_md_vs_rmsd()
+print(f'{WINDOW_SIZE},{WINDOW_SIZE_CONTEXT},{rsquared}')
+
+with outfile.open('a') as f:
+    print(f'{WINDOW_SIZE},{WINDOW_SIZE_CONTEXT},{rsquared}', file=f)

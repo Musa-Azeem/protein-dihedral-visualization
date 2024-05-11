@@ -9,3 +9,5 @@ matches.json
 *.csv
 csvs
 casp-xray
+cache
+results*
