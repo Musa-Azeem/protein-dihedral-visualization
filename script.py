@@ -12,31 +12,43 @@ import time
 import json
 from Bio.PDB.ic_rebuild import structure_rebuild_test
 import numpy as np
-import sys
+import seaborn as sns
+from Bio.Align import PairwiseAligner
+import matplotlib.pyplot as plt
 from sklearn.cluster import DBSCAN
+import seaborn as sns
 from scipy.stats import gaussian_kde
-from scipy.stats import linregress
-
+import matplotlib.patches as mpatches
+from sklearn.cluster import KMeans
+from sklearn.metrics import silhouette_score
+import plotly.express as px
+import statsmodels.api as sm
+import re
+import sys
 load_dotenv()
-amino_acid_codes = json.load(open('amino_acid_codes.json'))
+
 PDBMINE_URL = os.getenv("PDBMINE_URL")
 
-WINDOW_SIZE, WINDOW_SIZE_CONTEXT, eps, bw_method = sys.argv[1:]
+WINDOW_SIZE, WINDOW_SIZE_CONTEXT, casp_protein_id = sys.argv[1:]
 WINDOW_SIZE = int(WINDOW_SIZE)
 WINDOW_SIZE_CONTEXT = int(WINDOW_SIZE_CONTEXT)
-eps = float(eps)
-bw_method = float(bw_method) if bw_method.lower() != 'none' else None
-print(WINDOW_SIZE, WINDOW_SIZE_CONTEXT, eps, bw_method)
 
-# Protein info
-casp_protein_id = 'T1030'
-casp_protein_id2 = 'T1030'
-pdb_code = '6poo'
+## --------------------------- Get metadata ---------------------------
+amino_acid_codes = json.load(open('amino_acid_codes.json'))
 
-# casp_protein_id = 'T1024'
-# casp_protein_id2 = 'T1024'
-# pdb_code = '6t1z'
+targetlist_url = 'https://predictioncenter.org/casp14/targetlist.cgi?type=csv'
+targetlist_file = Path('targetlist.csv')
+if not targetlist_file.exists():
+    with open(targetlist_file, 'wb') as f:
+        f.write(requests.get(targetlist_url).content)
+targetlist = pd.read_csv(targetlist_file, sep=';').set_index('Target')
+def get_pdb_code(x):
+    m = re.search(r"\b\d[0-9a-z]{3}\b", x)
+    return m.group() if m else ''
+targetlist['pdb_code'] = targetlist['Description'].apply(get_pdb_code)
 
+pdb_code = targetlist.loc[casp_protein_id].pdb_code
+alphafold_id = f'{casp_protein_id}TS427_1'
 outdir = Path(f'tests/{casp_protein_id}_win{WINDOW_SIZE}-{WINDOW_SIZE_CONTEXT}')
 if outdir.exists():
     print('Results already exist')
@@ -44,7 +56,9 @@ else:
     outdir.mkdir(exist_ok=False, parents=True)
 outfile = Path('results.txt')
 
-# Helpers
+print(WINDOW_SIZE, WINDOW_SIZE_CONTEXT, casp_protein_id, pdb_code)
+
+## ------------------------------ Helpers ----------------------------
 def get_center(seq):
     if WINDOW_SIZE % 2 == 0:
         return seq[WINDOW_SIZE // 2 - 1]
@@ -90,12 +104,15 @@ if not results_dir.exists():
     results_dir.mkdir(exist_ok=True)
     os.system(f'wget -O {results_dir / "casp14.res_tables.T.tar.gz"} {results_url}')
     os.system(f'tar -xvf {results_dir / "casp14.res_tables.T.tar.gz"} -C {results_dir}')
-results_file = results_dir / f'{casp_protein_id2}.txt'
-results = pd.read_csv(results_file, delim_whitespace=True)
+results_file = results_dir / f'{casp_protein_id}.txt'
+if not results_file.exists():
+    results_file = Path(results_dir / f'{casp_protein_id}-D1.txt')
+results = pd.read_csv(results_file, sep='\s+')
 results = results[results.columns[1:]]
 results['Model'] = results['Model'].apply(lambda x: x.split('-')[0])
 
-# ------------------ Collect Dihedrals ---------------------------------------
+
+## ------------------ Collect Dihedrals ---------------------------------------
 xray_structure = parser.get_structure(pdb_code, xray_fn)
 xray_chain = list(xray_structure[0].get_chains())[0]
 
@@ -131,7 +148,6 @@ else:
 
 # Get phi_psi's of each prediction
 if not (outdir / 'phi_psi_predictions.csv').exists():
-
     phi_psi_predictions_ = []
     for prediction_pdb in tqdm((predictions_dir / casp_protein_id).iterdir()):
         with warnings.catch_warnings():
@@ -225,37 +241,84 @@ def get_phi_psi_mined(window_size):
 phi_psi_mined = get_phi_psi_mined(WINDOW_SIZE)
 phi_psi_mined_ctxt = get_phi_psi_mined(WINDOW_SIZE_CONTEXT)
 
-# ------------------------- Compute Maha --------------------------------------
+## ------------------------- Compute Maha --------------------------------------
 
-def find_phi_psi_c(phi_psi_dist, phi_psi_ctxt_dist, eps, bw_method, kdews):
-    
+def find_phi_psi_c(phi_psi_dist, phi_psi_ctxt_dist, bw_method, kdews):
     # combine with weights
     phi_psi_dist['weight'] = kdews[0]
     phi_psi_ctxt_dist['weight'] = kdews[1]
     phi_psi_dist = pd.concat([phi_psi_dist, phi_psi_ctxt_dist])
 
-    # Cluster with DBSCAN
-    clustering = DBSCAN(eps=eps, min_samples=3).fit(phi_psi_dist.values)
-    phi_psi_dist['cluster'] = clustering.labels_
-
-    # Find most probable cluster
+    # Find probability of each point
     kernel = gaussian_kde(phi_psi_dist[['phi','psi']].T, weights=phi_psi_dist['weight'], bw_method=bw_method)
     most_likely = phi_psi_dist.iloc[kernel(phi_psi_dist[['phi', 'psi']].values.T).argmax()]
     phi_psi_dist['prob'] = kernel(phi_psi_dist[['phi', 'psi']].values.T)
-    c = phi_psi_dist[phi_psi_dist.cluster != -1].groupby('cluster').sum(numeric_only=True)
-    if c.shape[0] == 0:
-        print('No clusters found, using entire dist')
-        phi_psi_dist_c = phi_psi_dist
-    else:
-        phi_psi_dist_c = phi_psi_dist[phi_psi_dist.cluster == c.prob.idxmax()]
 
+    # cluster with kmeans
+    max_sil_avg = -1
+    for k in range(2, min(phi_psi_dist.shape[0], 7)):
+        kmeans = KMeans(n_clusters=k)
+        labels = kmeans.fit_predict(phi_psi_dist[['phi', 'psi']])
+        sil_avg = silhouette_score(phi_psi_dist[['phi', 'psi']], labels)
+        if sil_avg > max_sil_avg:
+            max_sil_avg = sil_avg
+            phi_psi_dist['cluster'] = labels
+    
+    # Find most probable cluster
+    c = phi_psi_dist.groupby('cluster').sum(numeric_only=True)
+    phi_psi_dist_c = phi_psi_dist[phi_psi_dist.cluster == c.prob.idxmax()]
+    if phi_psi_dist_c.shape[0] < 3:
+        print('Too few points in cluster - using entire dist')
+        phi_psi_dist_c = phi_psi_dist
+
+    print('Chosen dist:', phi_psi_dist_c[['phi', 'psi']].shape, phi_psi_dist.phi.mean(), phi_psi_dist.psi.mean())    
     return phi_psi_dist, phi_psi_dist_c, most_likely
 
-def get_md_for_all_predictions(eps=10, bw_method=None, kdews=None):
+def calc_maha_for_one(phi_psi: np.ndarray, phi_psi_dist: np.ndarray, kdepeak):    
+    cov = np.cov(phi_psi_dist.T)
+    if np.diag(cov).min() < 1:
+        print('No significant variance in distribution - using distance to kde peak')
+        return np.sqrt((phi_psi[0] - kdepeak[0])**2 + (phi_psi[1] - kdepeak[1])**2)
+    if np.linalg.det(cov) == 0:
+        print('Singular covariance matrix - using distance to kde peak')
+        return np.sqrt((phi_psi[0] - kdepeak[0])**2 + (phi_psi[1] - kdepeak[1])**2)
+    
+    icov = np.linalg.inv(cov)
+    mean = phi_psi_dist.mean(axis=0)
+    return np.sqrt((phi_psi - mean) @ icov @ (phi_psi - mean).T)
+
+def calc_maha(phi_psi_preds, phi_psi_dist, kdepeak):
+    cov = np.cov(phi_psi_dist.T)
+    if np.diag(cov).min() < 1:
+        print('No significant variance in distribution - using distance to kde peak')
+        return np.sqrt(((phi_psi_preds[:,0] - kdepeak[0])**2) + ((phi_psi_preds[:,1] - kdepeak[1])**2))
+    if np.linalg.det(cov) == 0:
+        print('Singular covariance matrix - using distance to kde peak')
+        return np.sqrt(((phi_psi_preds[:,0] - kdepeak[0])**2) + ((phi_psi_preds[:,1] - kdepeak[1])**2))
+    
+    icov = np.linalg.inv(cov)
+    diff = phi_psi_preds - phi_psi_dist.mean(axis=0)
+    return np.sqrt((np.expand_dims((diff), 1) @ icov @ np.expand_dims((diff), 2)).squeeze())
+
+def pre_md_filter():
+    # remove sequences missing phi and psi
+    global xray_phi_psi, phi_psi_predictions
+    xray_phi_psi = xray_phi_psi[~xray_phi_psi.phi.isna() & ~xray_phi_psi.psi.isna()]
+    # remove all predictions with outlier overlapping sequences with xray
+    xray_seqs_unique = set(xray_phi_psi.seq_ctxt.unique())
+    grouped = phi_psi_predictions.groupby('protein_id').agg(
+        overlapping_seqs=('seq_ctxt', lambda series: len(set(series.unique()) & xray_seqs_unique)),
+        length=('seq_ctxt', 'count')
+    )
+    overlapping_seqs = grouped.overlapping_seqs[grouped.overlapping_seqs == grouped.overlapping_seqs.mode().values[0]]
+    lengths = grouped.length[grouped.length == grouped.length.mode().values[0]]
+    phi_psi_predictions = phi_psi_predictions[(phi_psi_predictions.protein_id.isin(overlapping_seqs.index)) & (phi_psi_predictions.protein_id.isin(lengths.index))]
+
+def get_md_for_all_predictions(bw_method=None, kdews=None):
     kdews = kdews or [1,128]
     phi_psi_predictions['md'] = np.nan
     xray_phi_psi['md'] = np.nan
-    for i,seq in enumerate(phi_psi_predictions.seq_ctxt.unique()):
+    for i,seq in enumerate(xray_phi_psi.seq_ctxt.unique()):
         inner_seq = get_subseq(seq)
         phi_psi_dist = phi_psi_mined.loc[phi_psi_mined.seq == inner_seq][['phi','psi']]
         phi_psi_ctxt_dist = phi_psi_mined_ctxt.loc[phi_psi_mined_ctxt.seq == seq][['phi','psi']]
@@ -268,70 +331,69 @@ def get_md_for_all_predictions(eps=10, bw_method=None, kdews=None):
             # leave as nan
             continue
 
-        xray = xray_phi_psi[xray_phi_psi.seq_ctxt == seq][['phi','psi']].values
-        preds = phi_psi_predictions.loc[phi_psi_predictions.seq_ctxt == seq][['phi','psi']].values
-
-        phi_psi_dist, phi_psi_dist_c, most_likely = find_phi_psi_c(phi_psi_dist, phi_psi_ctxt_dist, eps, bw_method, kdews)
-        phi_psi_c = phi_psi_dist_c[['phi', 'psi']].values
-        print(xray.shape, preds.shape, phi_psi_dist.shape, phi_psi_ctxt_dist.shape, phi_psi_dist_c.shape)
+        phi_psi_dist, phi_psi_dist_c, most_likely = find_phi_psi_c(phi_psi_dist, phi_psi_ctxt_dist, bw_method, kdews)
 
         # Mahalanobis distance to most common cluster
-        cov = np.cov(phi_psi_c.T)
-        if np.linalg.det(cov) == 0:
-            print(f'Skipping {seq} - singular matrix')
-            # leave as nan
-            continue
-        icov = np.linalg.inv(cov)
-        mean = phi_psi_c.mean(axis=0)
-
-        md_xray = np.nan
-        if xray.shape[0] > 0:
-            # xray
-            md_xray = (xray - mean) @ icov @ (xray - mean).T
-            if np.any(md_xray < 0):
-                md_xray = np.nan
-            else:
-                md_xray = np.sqrt(md_xray)[0,0]
-            xray_phi_psi.loc[xray_phi_psi.seq_ctxt == seq, 'md'] = md_xray
-        else:
+        xray = xray_phi_psi[xray_phi_psi.seq_ctxt == seq][['phi','psi']]
+        if xray.shape[0] == 0:
             print(f'No xray seq {seq}')
-
-        # All predictions
-        if preds.shape[0] > 0:
-            md = (np.expand_dims((preds - mean), 1) @ icov @ np.expand_dims((preds - mean), 2)).squeeze()
-            if np.any(md < 0):
-                md = np.nan
-            else:
-                md = np.sqrt(md)
-            phi_psi_predictions.loc[phi_psi_predictions.seq_ctxt == seq, 'md'] = md
         else:
+            md_xray = calc_maha_for_one(xray[['phi','psi']].values[0], phi_psi_dist_c[['phi','psi']].values, most_likely[['phi', 'psi']].values)
+            xray_phi_psi.loc[xray_phi_psi.seq_ctxt == seq, 'md'] = md_xray
+            
+        preds = phi_psi_predictions.loc[phi_psi_predictions.seq_ctxt == seq][['phi','psi']]
+        if preds.shape[0] == 0:
             print(f'No predictions seq {seq}')
+        else:
+            md = calc_maha(preds[['phi','psi']].values, phi_psi_dist_c[['phi','psi']].values, most_likely[['phi', 'psi']].values)
+            phi_psi_predictions.loc[phi_psi_predictions.seq_ctxt == seq, 'md'] = md
+        print(xray.shape, preds.shape, phi_psi_dist.shape, phi_psi_ctxt_dist.shape)
 
-    phi_psi_predictions.to_csv(outdir / f'phi_psi_predictions_md-eps{eps}.csv', index=False)
-    xray_phi_psi.to_csv(outdir / f'xray_phi_psi_md-eps{eps}.csv', index=False)
-        
-kdews=[1,128]
-get_md_for_all_predictions(eps, bw_method, kdews)
+    phi_psi_predictions.to_csv(outdir / f'phi_psi_predictions_md-kmeans.csv', index=False)
+    xray_phi_psi.to_csv(outdir / f'xray_phi_psi_md-kmeans.csv', index=False)
 
-def filter_and_sum(series):
-    series = series[series < series.quantile(0.80)]
-    return series.sum()
+pre_md_filter()
+get_md_for_all_predictions()
+
+def filter_and_agg(series, agg='sum', quantile=0.8):
+    series = series[series < series.quantile(quantile)]
+    return series.agg(agg)
+
 def calc_perc_na(series):
     return series.sum() / len(series)
 
-def plot_md_vs_rmsd(rmsd_lim=np.inf, md_lim_low=0, md_lim=np.inf):
+def ols_md_vs_rmsd(rmsd_lim_low=0, rmsd_lim_high=np.inf, md_lim_low=0, md_lim_high=np.inf):
     phi_psi_predictions['md_na'] = phi_psi_predictions.md.isna()
-    group_maha = phi_psi_predictions.groupby('protein_id', as_index=False).agg({'md': filter_and_sum, 'md_na':calc_perc_na})
+    group_maha = phi_psi_predictions.groupby('protein_id', as_index=False).agg(
+        md=('md',lambda x: filter_and_agg(x, agg='sum', quantile=1)), 
+        std_md=('md',lambda x: filter_and_agg(x, agg='std', quantile=1)), 
+        md_na=('md_na',calc_perc_na),
+        mds=('md', list)
+    )
     group_maha = group_maha.merge(results[['Model', 'RMS_CA']], left_on='protein_id', right_on='Model', how='inner')
-    group_maha = group_maha[group_maha.md_na <= group_maha.md_na.quantile(0.10)]
-    group_maha = group_maha[(group_maha.RMS_CA < rmsd_lim) & (group_maha.md > md_lim_low) & (group_maha.md < md_lim)].dropna()
+    
+    group_maha = group_maha[group_maha.md_na <= group_maha.md_na.quantile(.9)]
+    group_maha = group_maha[
+        (group_maha.RMS_CA > rmsd_lim_low) & \
+        (group_maha.RMS_CA < rmsd_lim_high) & \
+        (group_maha.md > md_lim_low) &\
+        (group_maha.md < md_lim_high)
+    ].dropna()
 
-    regr = linregress(group_maha.md, group_maha.RMS_CA)
-    print(f"R-squared: {regr.rvalue**2:.6f}")
-    return regr.rvalue**2
+    X = np.array(group_maha.mds.values.tolist())
+    y = group_maha.RMS_CA.values
+    X = np.where(np.isnan(X), np.nanmean(X,axis=0), X)
+    X[np.isnan(X)] = 0  # only nans left are where all values are nan
 
-rsquared = plot_md_vs_rmsd()
-print(f'{WINDOW_SIZE},{WINDOW_SIZE_CONTEXT},{rsquared}')
+    X = sm.add_constant(X)
+    model = sm.OLS(y, X).fit()
+    group_maha['rms_pred'] = model.predict(X)
+
+    return model.rsquared, model.rsquared_adj, model.f_pvalue
+
+rsquared, rsquared_adj, f_pvalue = ols_md_vs_rmsd()
+
+print(f'{WINDOW_SIZE},{WINDOW_SIZE_CONTEXT},{rsquared},{rsquared_adj},{f_pvalue}')
 
 with outfile.open('a') as f:
-    print(f'{WINDOW_SIZE},{WINDOW_SIZE_CONTEXT},{rsquared}', file=f)
+    f.write(f'{WINDOW_SIZE},{WINDOW_SIZE_CONTEXT},{rsquared},{rsquared_adj},{f_pvalue}\n')
