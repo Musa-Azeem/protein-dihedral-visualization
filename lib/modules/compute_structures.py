@@ -12,6 +12,7 @@ def get_phi_psi_xray(ins):
     xray_chain = list(xray_structure[0].get_chains())[0]
 
     if not (ins.outdir / 'xray_phi_psi.csv').exists():
+        print('Computing phi-psi for xray')
         xray_phi_psi = get_phi_psi_for_structure(xray_chain, ins.pdb_code)
         xray_phi_psi = pd.DataFrame(xray_phi_psi, columns=['pos', 'seq', 'seq_ctxt', 'res', 'phi', 'psi', 'protein_id'])
         xray_phi_psi.to_csv(ins.outdir / 'xray_phi_psi.csv', index=False)
@@ -23,6 +24,7 @@ def get_phi_psi_xray(ins):
 def get_phi_psi_predictions(ins):
     parser = PDBParser()
     if not (ins.outdir / 'phi_psi_predictions.csv').exists():
+        print('Computing phi-psi for predictions')
         phi_psi_predictions_ = []
         for prediction_pdb in tqdm((ins.predictions_dir).iterdir()):
                 prediction = parser.get_structure(prediction_pdb.name, prediction_pdb)
@@ -62,3 +64,21 @@ def get_phi_psi_for_structure(ins, protein_structure, protein_id):
             phi = phi if phi else np.nan # if phi is None, set it to np.nan
         phi_psi_.append([i, seq, seq_ctxt, res, phi, psi, protein_id])
     return phi_psi_
+
+def seq_filter(ins):
+    # Remove sequences with missing phi or psi
+    ins.xray_phi_psi = ins.xray_phi_psi[~ins.xray_phi_psi.phi.isna() & ~ins.xray_phi_psi.psi.isna()]
+    # remove all predictions with outlier number of overlapping sequences with xray
+    # or outlier length
+    xray_seqs_unique = set(ins.xray_phi_psi.seq_ctxt.unique())
+    grouped = ins.phi_psi_predictions.groupby('protein_id').agg(
+        n_overlapping_seqs=('seq_ctxt', lambda series: len(set(series.unique()) & xray_seqs_unique)),
+        length=('seq_ctxt', 'count')
+    )
+    # keep predictions with the mode length and number of overlapping sequences
+    grouped = grouped[
+        (grouped.n_overlapping_seqs == grouped.n_overlapping_seqs.mode().values[0]) & 
+        (grouped.length == grouped.length.mode().values[0])]
+    ins.phi_psi_predictions = ins.phi_psi_predictions[
+        ins.phi_psi_predictions.protein_id.isin(grouped.index)
+    ]

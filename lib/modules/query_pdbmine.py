@@ -19,6 +19,7 @@ def query_and_process_pdbmine(ins):
 
 # Get Phi-Psi distribution from PDBMine
 def query_pdbmine(ins, window_size):
+    print(f'Querying PDBMine - {window_size}')
     record = next(iter(SeqIO.parse(ins.xray_fn, "pdb-seqres")))
     residue_chain = str(record.seq)
 

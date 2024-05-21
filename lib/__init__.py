@@ -1,1 +1,2 @@
 from lib.dihedral_adherence import DihedralAdherence
+from lib.fit_model_on_multiple import fit_model_on_multiple
