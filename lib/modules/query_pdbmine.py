@@ -12,8 +12,8 @@ def query_and_process_pdbmine(ins):
     if not Path(f'cache/{ins.casp_protein_id}/matches-{ins.winsize_ctxt}').exists():
         query_pdbmine(ins.winsize_ctxt)
 
-    phi_psi_mined = get_phi_psi_mined(ins, ins.winsize)
-    phi_psi_mined_ctxt = get_phi_psi_mined(ins, ins.winsize_ctxt)
+    phi_psi_mined = get_phi_psi_mined(ins, ins.winsize, ins.kdews[0])
+    phi_psi_mined_ctxt = get_phi_psi_mined(ins, ins.winsize_ctxt, ins.kdews[1])
 
     return phi_psi_mined, phi_psi_mined_ctxt
 
@@ -63,7 +63,7 @@ def query_pdbmine(ins, window_size):
         print(f'Received matches - {i}')
         json.dump(matches, open(match_outdir / f'matches-win{window_size}_{i}.json', 'w'), indent=4)
 
-def get_phi_psi_mined(ins, window_size):
+def get_phi_psi_mined(ins, window_size, kdew):
     seqs = []
     phi_psi_mined = []
     for matches in Path(f'cache/{ins.casp_protein_id}/matches-{window_size}').iterdir():
@@ -82,5 +82,6 @@ def get_phi_psi_mined(ins, window_size):
                     res, phi, psi = center_res.values()
                     phi_psi_mined.append([seq, res, phi, psi, chain, protein_id])
     phi_psi_mined = pd.DataFrame(phi_psi_mined, columns=['seq', 'res', 'phi', 'psi', 'chain', 'protein_id'])
+    phi_psi_mined['weight'] = kdew
     phi_psi_mined.to_csv(ins.outdir / f'phi_psi_mined_win{window_size}.csv', index=False)
     return phi_psi_mined

@@ -65,7 +65,7 @@ def find_phi_psi_c(phi_psi_dist, phi_psi_ctxt_dist, bw_method):
     # cluster with kmeans
     max_sil_avg = -1
     for k in range(2, min(phi_psi_dist.shape[0], 7)):
-        kmeans = KMeans(n_clusters=k)
+        kmeans = KMeans(n_clusters=k, n_init=10) # TODO experiment with n_init
         labels = kmeans.fit_predict(phi_psi_dist[['phi', 'psi']])
         sil_avg = silhouette_score(phi_psi_dist[['phi', 'psi']], labels)
         if sil_avg > max_sil_avg:
