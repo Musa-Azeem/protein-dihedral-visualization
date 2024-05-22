@@ -12,7 +12,8 @@ source .venv/bin/activate
 #     done
 # done
 
-for i in T1058 T1049 T1056 T1030 T1038
+for i in T1096 T1099 T1082 T1025 T1031 T1027
 do
-    python3 script.py 5 6 $i
+    python3 script.py 5 6 $i >> log.txt
 done
+
