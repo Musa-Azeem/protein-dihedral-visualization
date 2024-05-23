@@ -12,7 +12,7 @@ def get_phi_psi_xray(ins):
         parser = PDBParser()
         xray_structure = parser.get_structure(ins.pdb_code, ins.xray_fn)
         xray_chain = list(xray_structure[0].get_chains())[0]
-        xray_phi_psi = get_phi_psi_for_structure(xray_chain, xray_structure, ins.pdb_code)
+        xray_phi_psi = get_phi_psi_for_structure(ins, xray_structure, ins.pdb_code)
         xray_phi_psi = pd.DataFrame(xray_phi_psi, columns=['pos', 'seq', 'seq_ctxt', 'res', 'phi', 'psi', 'protein_id'])
         xray_phi_psi.to_csv(ins.outdir / 'xray_phi_psi.csv', index=False)
     else:
@@ -29,7 +29,7 @@ def get_phi_psi_predictions(ins):
                 prediction = parser.get_structure(prediction_pdb.name, prediction_pdb)
                 try:
                     chain = list(prediction[0].get_chains())[0]
-                    phi_psi_predictions_ += get_phi_psi_for_structure(chain, prediction, prediction.id)
+                    phi_psi_predictions_ += get_phi_psi_for_structure(ins, prediction, prediction.id)
                 except Exception as e:
                     print(e)
 
