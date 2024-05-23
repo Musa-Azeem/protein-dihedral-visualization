@@ -44,7 +44,7 @@ class DihedralAdherence():
         targetlist = retrieve_target_list()
         self.pdb_code = targetlist.loc[casp_protein_id, 'pdb_code']
         if self.pdb_code == '':
-            raise ValueError('No PDB code found')
+            raise ValueError(f'No PDB code found for {casp_protein_id}')
         self.alphafold_id = f'{casp_protein_id}TS427_1'
         print('PDB:', self.pdb_code)
 

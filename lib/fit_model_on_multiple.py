@@ -5,8 +5,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import linregress
 import seaborn as sns
+from sklearn.ensemble import RandomForestRegressor
 
-def fit_model_on_multiple(protein_ids: list, winsize, winsize_ctxt, pdbmine_url, project_dir, n_comp=1000, axlims=None):
+def fit_model_on_multiple(protein_ids: list, winsize, winsize_ctxt, pdbmine_url, project_dir, n_comp=1000):
     X = []
     y = []
     grouped_preds = []
@@ -61,11 +62,63 @@ def fit_model_on_multiple(protein_ids: list, winsize, winsize_ctxt, pdbmine_url,
     grouped_preds['rms_pred'] = model.predict(X)
     grouped_preds['RMS_CA'] = y
     print(f'Model R-squared: {model.rsquared:.6f}, Adj R-squared: {model.rsquared_adj:.6f}, p-value: {model.f_pvalue}')
-    plot(grouped_preds, model, axlims)
     return model, grouped_preds
 
+def fit_rf(protein_ids: list, winsize, winsize_ctxt, pdbmine_url, project_dir, n_comp=900):
+    grouped_preds = []
+    X = []
+    y = []
+    for protein_id in protein_ids:
+        da = DihedralAdherence(protein_id, winsize, winsize_ctxt, pdbmine_url, project_dir)
+        da.load_results_md()
+        da.filter_nas()
+        grouped_preds.append(da.grouped_preds.sort_values(['protein_id']))
+        Xi = da.grouped_preds_md.sort_values('protein_id').values
+        Xi = np.pad(Xi, ((0, 0), (0, n_comp - Xi.shape[1])), mode='constant', constant_values=0)
+        X.append(Xi)
+        y.append(grouped_preds[-1]['RMS_CA'].values)
 
-def plot(grouped_preds, model, axlims):
+    X = np.concatenate(X)
+    y = np.concatenate(y)
+    grouped_preds = pd.concat(grouped_preds)
+    X[np.isnan(X)] = 0
+
+    rf = RandomForestRegressor(n_estimators=1, max_depth=50)
+    rf.fit(X, y)
+    grouped_preds['rms_pred'] = rf.predict(X)
+
+    return rf, grouped_preds
+
+def predict_rf(rf, protein_ids, winsize, winsize_ctxt, pdbmine_url, project_dir, n_comp=900):
+    grouped_preds = []
+    X = []
+    y = []
+    longest_protein = 0
+    for protein_id in protein_ids:
+        da = DihedralAdherence(protein_id, winsize, winsize_ctxt, pdbmine_url, project_dir)
+        da.load_results_md()
+        da.filter_nas()
+        grouped_preds.append(da.grouped_preds.sort_values(['protein_id']))
+        Xi = da.grouped_preds_md.sort_values('protein_id').values
+        Xi = np.pad(Xi, ((0, 0), (0, n_comp - Xi.shape[1])), mode='constant', constant_values=0)
+
+        if Xi.shape[1] > longest_protein:
+            longest_protein = Xi.shape[1]
+        
+        X.append(Xi)
+        y.append(grouped_preds[-1]['RMS_CA'].values)
+
+    X = [np.pad(Xi, ((0, 0), (0, longest_protein - Xi.shape[1])), mode='constant', constant_values=0) for Xi in X]
+    X = np.concatenate(X)
+    y = np.concatenate(y)
+    grouped_preds = pd.concat(grouped_preds)
+    X[np.isnan(X)] = 0
+
+    grouped_preds['rms_pred'] = rf.predict(X)
+
+    return grouped_preds
+
+def plot_md_vs_rmsd(grouped_preds, axlims=None):
     regr = linregress(grouped_preds.rms_pred, grouped_preds.RMS_CA)
 
     sns.set_theme(style="whitegrid")
@@ -80,7 +133,7 @@ def plot(grouped_preds, model, axlims):
     ax.set_xlabel('Regression-Aggregated Dihedral Adherence Score', fontsize=14, labelpad=15)
     ax.set_ylabel('Prediction Backbone RMSD', fontsize=14, labelpad=15)
     ax.set_title(r'Aggregated Dihedral Adherence vs RMSD ($C_{\alpha}$) for each prediction', fontsize=16, pad=20)
-    ax.text(0.85, 0.10, r'$R^2$='+f'{model.rsquared:.3f}', transform=ax.transAxes, fontsize=12,
+    ax.text(0.85, 0.10, r'$R^2$='+f'{regr.rvalue**2:.3f}', transform=ax.transAxes, fontsize=12,
         verticalalignment='top', bbox=dict(boxstyle='round,pad=0.5', edgecolor='black', facecolor='white'))
     plt.legend(fontsize=12)
     plt.tight_layout()
