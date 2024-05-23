@@ -7,7 +7,7 @@ from scipy.stats import linregress
 import seaborn as sns
 from sklearn.ensemble import RandomForestRegressor
 
-def fit_model_on_multiple(protein_ids: list, winsize, winsize_ctxt, pdbmine_url, project_dir, n_comp=1000):
+def fit_lr(protein_ids: list, winsize, winsize_ctxt, pdbmine_url, project_dir, n_comp=1000):
     X = []
     y = []
     grouped_preds = []
@@ -51,7 +51,7 @@ def fit_model_on_multiple(protein_ids: list, winsize, winsize_ctxt, pdbmine_url,
         y.append(yi)
 
     # truncate to longest protein length if its less than n_comp
-    X = [Xi[:,:min(longest_protein, n_comp)] for Xi in X]
+    # X = [Xi[:,:min(longest_protein, n_comp)] for Xi in X]
 
     X = np.concatenate(X)
     y = np.concatenate(y)
@@ -59,6 +59,45 @@ def fit_model_on_multiple(protein_ids: list, winsize, winsize_ctxt, pdbmine_url,
 
     X = sm.add_constant(X)
     model = sm.OLS(y, X).fit()
+    grouped_preds['rms_pred'] = model.predict(X)
+    grouped_preds['RMS_CA'] = y
+    print(f'Model R-squared: {model.rsquared:.6f}, Adj R-squared: {model.rsquared_adj:.6f}, p-value: {model.f_pvalue}')
+    return model, grouped_preds
+
+def predict_lr(model, protein_ids, winsize, winsize_ctxt, pdbmine_url, project_dir, n_comp=1000):
+    X = []
+    y = []
+    grouped_preds = []
+    grouped_preds_md = []
+    for protein_id in protein_ids:
+        da = DihedralAdherence(protein_id, winsize, winsize_ctxt, pdbmine_url, project_dir)
+        # da.compute_structures()
+        # da.query_pdbmine()
+        # da.compute_mds()
+        da.load_results_md()
+        da.filter_nas()
+        grouped_preds.append(da.grouped_preds.sort_values(['protein_id']))
+        grouped_preds_md.append(da.grouped_preds_md.sort_values(['protein_id']))
+        Xi = da.grouped_preds_md.sort_values('protein_id').values
+        Xi[np.isnan(Xi)] = 0
+        
+
+        if Xi.shape[1] < n_comp:
+            # Pad Xi if less then n_comp
+            Xi = np.pad(Xi, ((0, 0), (0, n_comp - Xi.shape[1])), mode='constant', constant_values=0)
+        else:
+            # truncate to n_comp
+            Xi = Xi[:,:n_comp]
+        yi = grouped_preds[-1]['RMS_CA'].values
+
+        X.append(Xi)
+        y.append(yi)
+
+    X = np.concatenate(X)
+    y = np.concatenate(y)
+    grouped_preds = pd.concat(grouped_preds)
+
+    X = sm.add_constant(X)
     grouped_preds['rms_pred'] = model.predict(X)
     grouped_preds['RMS_CA'] = y
     print(f'Model R-squared: {model.rsquared:.6f}, Adj R-squared: {model.rsquared_adj:.6f}, p-value: {model.f_pvalue}')

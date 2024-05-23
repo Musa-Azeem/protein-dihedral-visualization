@@ -209,6 +209,10 @@ def plot_res_vs_md(ins, pred_id, pred_name, highlight_res, limit_quantile, legen
     axes[1].set_xlabel('Residue Position in Chain', fontsize=12)
     axes[1].legend(loc=legend_loc)
 
+    fig.text(0.845, 1.70, f'Pred RMSD={ins.results.loc[ins.results.Model == pred_id, 'RMS_CA'].values[0]:.02f}', 
+             transform=axes[1].transAxes, fontsize=10, verticalalignment='top', 
+             bbox=dict(boxstyle='round,pad=0.5', edgecolor='black', facecolor='white'))
+
     fig.text(-0.02, 0.5, 'Dihedral Adherence of Residue', va='center', rotation='vertical', fontsize=12)
     fig.suptitle('Dihedral Adherence for each Residue of the Protein 7W6B: Prediction vs X-Ray', fontsize=16)
     plt.tight_layout()
@@ -260,15 +264,23 @@ def plot_md_vs_rmsd(ins, axlims, fn):
 def plot_heatmap(ins, fillna, fn):
     cmap = sns.color_palette("rocket", as_cmap=True)
     fig, ax = plt.subplots(1,1, figsize=(5,5))
-    X = ins.grouped_preds_md.values
+    ins.grouped_preds = ins.grouped_preds.sort_values('protein_id')
+    ins.grouped_preds_md = ins.grouped_preds_md.sort_index()
+    df = ins.grouped_preds_md.copy()
+    df['rmsd'] = ins.grouped_preds['RMS_CA'].values
+    df = df.sort_values('rmsd')
+    af_idx = df.index.get_loc(ins.alphafold_id)
+    # print(ins.grouped_preds[ins.grouped_preds.protein_id == ins.alphafold_id])
+    X = df.iloc[:, :-1].values
+    print(X.shape)
     X = np.where(np.isnan(X), np.nanmean(X,axis=0), X)
     if fillna:
         X[np.isnan(X)] = 0 # for entire column nan
     sns.heatmap(X, ax=ax, cmap=cmap)
 
     ax.set_xlabel('Residue Position', fontsize=10)
-    ax.set_yticks([])
-    ax.set_yticklabels([])
+    ax.set_yticks([af_idx + 0.5])
+    ax.set_yticklabels([f'Alpha\nFold'], fontsize=7)
     ax.set_ylabel('Prediction', fontsize=10)
     ax.set_xticks([])
     ax.set_xticklabels([])

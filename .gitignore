@@ -13,3 +13,4 @@ cache
 results*
 tests
 pkls
+__pycache__

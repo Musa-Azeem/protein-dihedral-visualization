@@ -20,7 +20,7 @@ def get_md_for_all_predictions_(ins, bw_method=None):
         inner_seq = ins.get_subseq(seq)
         phi_psi_dist = ins.phi_psi_mined.loc[ins.phi_psi_mined.seq == inner_seq][['phi','psi', 'weight']]
         phi_psi_ctxt_dist = ins.phi_psi_mined_ctxt.loc[ins.phi_psi_mined_ctxt.seq == seq][['phi','psi', 'weight']]
-        print(f'{seq} - win{ins.winsize}: {phi_psi_dist.shape[0]}, win{ins.winsize_ctxt}: {phi_psi_ctxt_dist.shape[0]}')
+        print(f'{i}/{len(ins.xray_phi_psi.seq_ctxt.unique())}: {seq} - win{ins.winsize}: {phi_psi_dist.shape[0]}, win{ins.winsize_ctxt}: {phi_psi_ctxt_dist.shape[0]}')
 
         if phi_psi_ctxt_dist.shape[0] > 2:
             print('Enough context data for KDE - Using Full Context')
