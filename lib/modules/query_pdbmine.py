@@ -8,9 +8,9 @@ import pandas as pd
 
 def query_and_process_pdbmine(ins):
     if not Path(f'cache/{ins.casp_protein_id}/matches-{ins.winsize}').exists():
-        query_pdbmine(ins.winsize)
+        query_pdbmine(ins, ins.winsize)
     if not Path(f'cache/{ins.casp_protein_id}/matches-{ins.winsize_ctxt}').exists():
-        query_pdbmine(ins.winsize_ctxt)
+        query_pdbmine(ins, ins.winsize_ctxt)
 
     phi_psi_mined = get_phi_psi_mined(ins, ins.winsize, ins.kdews[0])
     phi_psi_mined_ctxt = get_phi_psi_mined(ins, ins.winsize_ctxt, ins.kdews[1])

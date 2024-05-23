@@ -1,14 +1,94 @@
 from lib import DihedralAdherence
 import pandas as pd
+import statsmodels.api as sm
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.stats import linregress
+import seaborn as sns
 
-def fit_model_on_multiple(protein_ids: list, winsize, winsize_ctxt, pdbmine_url):
+def fit_model_on_multiple(protein_ids: list, winsize, winsize_ctxt, pdbmine_url, project_dir, n_comp=1000, axlims=None):
+    X = []
+    y = []
     grouped_preds = []
     grouped_preds_md = []
+    longest_protein = 0
     for protein_id in protein_ids:
-        da = DihedralAdherence(protein_id, winsize, winsize_ctxt, pdbmine_url)
-        da.compute_structures()
-        da.query_pdbmine()
-        da.compute_mds()
-        grouped_preds.append(da.grouped_preds.sort_values['protein_id'])
+        da = DihedralAdherence(protein_id, winsize, winsize_ctxt, pdbmine_url, project_dir)
+        # da.compute_structures()
+        # da.query_pdbmine()
+        # da.compute_mds()
+        da.load_results_md()
+        da.filter_nas()
+        grouped_preds.append(da.grouped_preds.sort_values(['protein_id']))
+        grouped_preds_md.append(da.grouped_preds_md.sort_values(['protein_id']))
+        Xi = da.grouped_preds_md.sort_values('protein_id').values
+        Xi[np.isnan(Xi)] = 0
 
+        if Xi.shape[1] > longest_protein:
+            longest_protein = Xi.shape[1]
+
+        if Xi.shape[1] < n_comp:
+            # Pad Xi if less then n_comp
+            # Xi = np.sort(np.pad(Xi, ((0, 0), (0, n_comp - Xi.shape[1])), mode='constant', constant_values=0))[:,::-1]
+            Xi = np.pad(Xi, ((0, 0), (0, n_comp - Xi.shape[1])), mode='constant', constant_values=0)
+            # Xi = np.sort(Xi)[:,::-1] # sort in descending order
+        else:
+            # sort Xi in descending order
+            # Xi = np.sort(Xi)[:,::-1]
+            # truncate to n_comp
+            Xi = Xi[:,:n_comp]
+        yi = grouped_preds[-1]['RMS_CA'].values
+
+        # normalize
+        # Xi = (Xi - Xi.mean(axis=0)) / (Xi.std(axis=0) + 1e-8)
+        # yi = (yi - yi.mean()) / (yi.std() + 1e-8)
+        # normalize to be between 0 and 1
+        # Xi = (Xi - Xi.min(axis=0)) / (Xi.max(axis=0) - Xi.min(axis=0) + 1e-8)
+        # yi = (yi - yi.min()) / (yi.max() - yi.min() + 1e-8)
+
+        X.append(Xi)
+        y.append(yi)
+
+    # truncate to longest protein length if its less than n_comp
+    X = [Xi[:,:min(longest_protein, n_comp)] for Xi in X]
+
+    X = np.concatenate(X)
+    y = np.concatenate(y)
     grouped_preds = pd.concat(grouped_preds)
+
+    X = sm.add_constant(X)
+    model = sm.OLS(y, X).fit()
+    grouped_preds['rms_pred'] = model.predict(X)
+    grouped_preds['RMS_CA'] = y
+    print(f'Model R-squared: {model.rsquared:.6f}, Adj R-squared: {model.rsquared_adj:.6f}, p-value: {model.f_pvalue}')
+    plot(grouped_preds, model, axlims)
+    return model, grouped_preds
+
+
+def plot(grouped_preds, model, axlims):
+    regr = linregress(grouped_preds.rms_pred, grouped_preds.RMS_CA)
+
+    sns.set_theme(style="whitegrid")
+    sns.set_palette("pastel")
+    fig, ax = plt.subplots(figsize=(8, 8))
+
+    sns.scatterplot(data=grouped_preds, x='rms_pred', y='RMS_CA', ax=ax, marker='o', s=25, edgecolor='b', legend=True, hue='target')
+    ax.plot(
+        regr.intercept + regr.slope * np.linspace(0, grouped_preds.rms_pred.max(), 100), 
+        np.linspace(0, grouped_preds.rms_pred.max(), 100), 
+        color='red', lw=2, label='Regression Line')
+    ax.set_xlabel('Regression-Aggregated Dihedral Adherence Score', fontsize=14, labelpad=15)
+    ax.set_ylabel('Prediction Backbone RMSD', fontsize=14, labelpad=15)
+    ax.set_title(r'Aggregated Dihedral Adherence vs RMSD ($C_{\alpha}$) for each prediction', fontsize=16, pad=20)
+    ax.text(0.85, 0.10, r'$R^2$='+f'{model.rsquared:.3f}', transform=ax.transAxes, fontsize=12,
+        verticalalignment='top', bbox=dict(boxstyle='round,pad=0.5', edgecolor='black', facecolor='white'))
+    plt.legend(fontsize=12)
+    plt.tight_layout()
+
+    if axlims:
+        ax.set_xlim(axlims[0][0], axlims[0][1])
+        ax.set_ylim(axlims[1][0], axlims[1][1])
+
+    plt.show()
+    
+    sns.reset_defaults()

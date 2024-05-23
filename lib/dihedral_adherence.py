@@ -43,6 +43,8 @@ class DihedralAdherence():
         # Get targetlist and corresponding pdbcode
         targetlist = retrieve_target_list()
         self.pdb_code = targetlist.loc[casp_protein_id, 'pdb_code']
+        if self.pdb_code == '':
+            raise ValueError('No PDB code found')
         self.alphafold_id = f'{casp_protein_id}TS427_1'
         print('PDB:', self.pdb_code)
 
@@ -102,8 +104,11 @@ class DihedralAdherence():
         if self.xray_phi_psi is not None:
             self.get_results_metadata()
     
-    def compute_mds(self):
-        get_md_for_all_predictions(self)
+    def compute_mds(self, skip_existing=True):
+        if self.xray_phi_psi is None or self.phi_psi_predictions is None:
+            print('Run compute_structures() or load_results() first')
+            return
+        get_md_for_all_predictions(self, skip_existing)
         self._get_grouped_preds()
 
     def load_results(self):
@@ -182,11 +187,11 @@ class DihedralAdherence():
             print(f'Model R-squared: {self.model.rsquared:.6f}, Adj R-squared: {self.model.rsquared_adj:.6f}, p-value: {self.model.f_pvalue}')
         plot_md_vs_rmsd(self, axlims, fn)
     
-    def plot_heatmap(self, fn=None):
+    def plot_heatmap(self, fillna=True, fn=None):
         if not 'md' in self.phi_psi_predictions.columns:
             print('No MD data available. Run compute_mds() or load_results_md() first')
             return
-        plot_heatmap(self, fn)
+        plot_heatmap(self, fillna, fn)
 
     def _get_grouped_preds(self):
         self.phi_psi_predictions['md_na'] = self.phi_psi_predictions.md.isna()
@@ -202,4 +207,9 @@ class DihedralAdherence():
             right_on='Model',
             how='inner'
         )
+        self.grouped_preds['target'] = self.casp_protein_id
         self.grouped_preds_md = self.phi_psi_predictions.pivot(index='protein_id', columns='pos', values='md')
+
+    def filter_nas(self, quantile=0.9):
+        self.grouped_preds = self.grouped_preds[self.grouped_preds.md_na < self.grouped_preds.md_na.quantile(0.9)]
+        self.grouped_preds_md = self.grouped_preds_md.loc[self.grouped_preds.protein_id]

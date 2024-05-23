@@ -186,25 +186,25 @@ def plot_res_vs_md(ins, pred_id, pred_name, highlight_res, limit_quantile, legen
     both = pd.merge(pred, ins.xray_phi_psi[['seq', 'md']].copy(), how='inner', on=['seq','seq'], suffixes=('_pred','_xray'))
     both['md_diff'] = both['md_pred'] - both['md_xray']
     if limit_quantile:
-        both[both.md_pred> both.md_pred.quantile(limit_quantile)] = np.nan
+        both[both.md_pred > both.md_pred.quantile(limit_quantile)] = np.nan
         both[both.md_xray > both.md_xray.quantile(limit_quantile)] = np.nan
         both[both.md_diff > both.md_diff.quantile(limit_quantile)] = np.nan
     
     fig, axes = plt.subplots(2, figsize=(10, 5), sharex=True)
-    sns.lineplot(data=both, x=both.index, y='md_pred', ax=axes[0], label=pred_name)
-    sns.lineplot(data=both, x=both.index, y='md_xray', ax=axes[0], label='X-Ray')
+    sns.lineplot(data=both, x='pos', y='md_pred', ax=axes[0], label=pred_name)
+    sns.lineplot(data=both, x='pos', y='md_xray', ax=axes[0], label='X-Ray')
     axes[0].set_ylabel('')
     axes[0].legend(loc=legend_loc)
 
-    sns.lineplot(data=both, x=both.index, y='md_diff', ax=axes[1], label=f'Difference:\n{pred_name} - Xray')
+    sns.lineplot(data=both, x='pos', y='md_diff', ax=axes[1], label=f'Difference:\n{pred_name} - Xray')
     axes[1].fill_between(
-        x=both.index, 
+        x=both.pos, 
         y1=both['md_diff'].mean() + both['md_diff'].std(), 
         y2=both['md_diff'].mean() - both['md_diff'].std(), 
         color='tan', 
         alpha=0.4
     )
-    axes[1].hlines(both['md_diff'].mean(), xmin=0, xmax=len(both), color='tan', label='Mean Difference', linewidth=0.75)
+    axes[1].hlines(both['md_diff'].mean(), xmin=both.pos.min(), xmax=both.pos.max(), color='tan', label='Mean Difference', linewidth=0.75)
     axes[1].set_ylabel('')
     axes[1].set_xlabel('Residue Position in Chain', fontsize=12)
     axes[1].legend(loc=legend_loc)
@@ -257,12 +257,13 @@ def plot_md_vs_rmsd(ins, axlims, fn):
 
     sns.reset_defaults()
 
-def plot_heatmap(ins, fn):
+def plot_heatmap(ins, fillna, fn):
     cmap = sns.color_palette("rocket", as_cmap=True)
     fig, ax = plt.subplots(1,1, figsize=(5,5))
     X = ins.grouped_preds_md.values
     X = np.where(np.isnan(X), np.nanmean(X,axis=0), X)
-    X[np.isnan(X)] = 0 # for entire column nan
+    if fillna:
+        X[np.isnan(X)] = 0 # for entire column nan
     sns.heatmap(X, ax=ax, cmap=cmap)
 
     ax.set_xlabel('Residue Position', fontsize=10)
@@ -275,7 +276,7 @@ def plot_heatmap(ins, fn):
     cbar = ax.collections[0].colorbar
     cbar.set_label('Dihedral Adherence Magnitude', fontsize=10, labelpad=10)
     cbar.ax.tick_params(labelsize=10)
-    ax.set_title('Dihedral Adherence for each Residue of\nPredictions for the Protein 6VR4', fontsize=12, pad=20)
+    ax.set_title(f'Dihedral Adherence for each Residue of\nPredictions for the Protein {ins.casp_protein_id}', fontsize=12, pad=20)
 
     plt.tight_layout()
     if fn:

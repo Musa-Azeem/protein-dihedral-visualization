@@ -2,9 +2,10 @@ import numpy as np
 from lib.utils import find_phi_psi_c, calc_maha_for_one, calc_maha
 from pathlib import Path
 import pandas as pd
+from numpy.linalg import LinAlgError
 
-def get_md_for_all_predictions(ins, bw_method=None):
-    if not Path(ins.outdir / 'phi_psi_predictions_md.csv').exists():
+def get_md_for_all_predictions(ins, skip_existing, bw_method=None):
+    if not Path(ins.outdir / 'phi_psi_predictions_md.csv').exists() or not skip_existing:
         get_md_for_all_predictions_(ins, bw_method)
     else:
         ins.phi_psi_predictions = pd.read_csv(ins.outdir / 'phi_psi_predictions_md.csv')
@@ -27,8 +28,11 @@ def get_md_for_all_predictions_(ins, bw_method=None):
             print(f'Skipping {seq} - not enough data points')
             # leave as nan
             continue
-
-        phi_psi_dist, phi_psi_dist_c, most_likely = find_phi_psi_c(phi_psi_dist, phi_psi_ctxt_dist, bw_method)
+        try:
+            phi_psi_dist, phi_psi_dist_c, most_likely = find_phi_psi_c(phi_psi_dist, phi_psi_ctxt_dist, bw_method)
+        except LinAlgError as e:
+            print('Singular Matrix - skipping')
+            continue # leave as nan
 
         # Mahalanobis distance to most common cluster
         xray = ins.xray_phi_psi[ins.xray_phi_psi.seq_ctxt == seq][['phi','psi']]

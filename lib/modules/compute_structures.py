@@ -7,12 +7,11 @@ from tqdm import tqdm
 import pandas as pd
 
 def get_phi_psi_xray(ins):
-    parser = PDBParser()
-    xray_structure = parser.get_structure(ins.pdb_code, ins.xray_fn)
-    xray_chain = list(xray_structure[0].get_chains())[0]
-
     if not (ins.outdir / 'xray_phi_psi.csv').exists():
         print('Computing phi-psi for xray')
+        parser = PDBParser()
+        xray_structure = parser.get_structure(ins.pdb_code, ins.xray_fn)
+        xray_chain = list(xray_structure[0].get_chains())[0]
         xray_phi_psi = get_phi_psi_for_structure(xray_chain, ins.pdb_code)
         xray_phi_psi = pd.DataFrame(xray_phi_psi, columns=['pos', 'seq', 'seq_ctxt', 'res', 'phi', 'psi', 'protein_id'])
         xray_phi_psi.to_csv(ins.outdir / 'xray_phi_psi.csv', index=False)
@@ -22,9 +21,9 @@ def get_phi_psi_xray(ins):
     return xray_phi_psi
 
 def get_phi_psi_predictions(ins):
-    parser = PDBParser()
     if not (ins.outdir / 'phi_psi_predictions.csv').exists():
         print('Computing phi-psi for predictions')
+        parser = PDBParser()
         phi_psi_predictions_ = []
         for prediction_pdb in tqdm((ins.predictions_dir).iterdir()):
                 prediction = parser.get_structure(prediction_pdb.name, prediction_pdb)
