@@ -167,7 +167,7 @@ class DihedralAdherence():
     def plot_md_for_seq(self, seq=None, pred_id=None, pred_name=None, axlims=None, bw_method=None, fn=None):
         seq = seq or self.overlapping_seqs[0]
         pred_id = pred_id or self.protein_ids[0]
-        plot_md_for_seq(self, seq, pred_id, pred_name, axlims, bw_method, fn)
+        plot_md_for_seq(self, seq, pred_id, pred_name, bw_method, axlims, fn)
     
     def plot_res_vs_md(self, pred_id=None, pred_name=None, highlight_res=None, limit_quantile=None, legend_loc='upper right', fn=None):
         highlight_res = highlight_res or []

@@ -54,6 +54,16 @@ def check_alignment(xray_fn, pred_fn):
             if t2-t1 > 5:
                 print(f'Match of length: {t2-t1} residues at position t={t1}, q={q1}')
 
+def find_phi_psi_kde(phi_psi_dist, phi_psi_ctxt_dist, bw_method):
+    phi_psi_dist = pd.concat([phi_psi_dist, phi_psi_ctxt_dist])
+    
+    # Find probability of each point
+    kernel = gaussian_kde(phi_psi_dist[['phi','psi']].T, weights=phi_psi_dist['weight'], bw_method=bw_method)
+    most_likely = phi_psi_dist.iloc[kernel(phi_psi_dist[['phi', 'psi']].values.T).argmax()]
+    phi_psi_dist['prob'] = kernel(phi_psi_dist[['phi', 'psi']].values.T)
+
+    return most_likely
+
 def find_phi_psi_c(phi_psi_dist, phi_psi_ctxt_dist, bw_method):
     phi_psi_dist = pd.concat([phi_psi_dist, phi_psi_ctxt_dist])
 
