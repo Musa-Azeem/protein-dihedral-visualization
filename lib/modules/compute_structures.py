@@ -47,7 +47,6 @@ def get_phi_psi_for_structure(ins, protein_structure, protein_id):
         raise Exception('Failed to rebuild')
     residues = list(protein_structure.get_residues())
     phi_psi_ = []
-    print([r.resname for r in residues])
     for i in range(ins.winsize_ctxt//2, len(residues) - ins.winsize_ctxt // 2):
         # Convert 3 char codes to 1 char codes
         seq = ''.join([AMINO_ACID_CODES.get(r.resname, 'X') for r in residues[ins.get_seq(i)]])

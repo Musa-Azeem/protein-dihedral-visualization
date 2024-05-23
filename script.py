@@ -1,10 +1,14 @@
 from lib import DihedralAdherence
 import os
+import pandas as pd
+from dotenv import load_dotenv
+load_dotenv()
 
 WINDOW_SIZE = 5
 WINDOW_SIZE_CONTEXT = 6
 PDBMINE_URL = os.getenv("PDBMINE_URL")
 PROJECT_DIR = 'tests'
+print(PDBMINE_URL)
 
 targetlist = pd.read_csv('targetlist.csv', sep=';')
 for target in targetlist.Target.unique():
