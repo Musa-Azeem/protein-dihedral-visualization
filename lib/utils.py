@@ -96,6 +96,11 @@ def find_phi_psi_c(phi_psi_dist, phi_psi_ctxt_dist, bw_method):
     ))
     return phi_psi_dist, phi_psi_dist_c, most_likely
 
+def calc_da_for_one(kdepeak, phi_psi):
+    return np.sqrt((phi_psi[0] - kdepeak[0])**2 + (phi_psi[1] - kdepeak[1])**2)
+def calc_da(kdepeak, phi_psi_preds):
+    return np.sqrt(((phi_psi_preds[:,0] - kdepeak[0])**2) + ((phi_psi_preds[:,1] - kdepeak[1])**2))
+
 def calc_maha_for_one(phi_psi: np.ndarray, phi_psi_dist: np.ndarray, kdepeak):    
     cov = np.cov(phi_psi_dist.T)
     if np.diag(cov).min() < 1:

@@ -5,7 +5,7 @@ import numpy as np
 from scipy.stats import gaussian_kde
 import matplotlib.patches as mpatches
 from scipy.stats import linregress
-from lib.utils import find_phi_psi_c, calc_maha_for_one, calc_maha
+from lib.utils import find_phi_psi_c, calc_maha_for_one, calc_maha, calc_da_for_one, calc_da
 
 colors = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple', 'tab:brown', 'tab:pink', 'tab:gray', 'tab:olive', 'tab:cyan']
 
@@ -138,31 +138,30 @@ def plot_md_for_seq(ins, seq, pred_id, pred_name, bw_method, axlims, fn):
     phi_psi_dist, phi_psi_dist_c, most_likely = find_phi_psi_c(phi_psi_dist, phi_psi_ctxt_dist, bw_method)
 
     # Mahalanobis distance to most common cluster
-    md_xray = calc_maha_for_one(xray[['phi','psi']].values[0], phi_psi_dist_c[['phi','psi']].values, most_likely[['phi', 'psi']].values)
-    md_pred = calc_maha_for_one(pred[['phi','psi']].values[0], phi_psi_dist_c[['phi','psi']].values, most_likely[['phi', 'psi']].values)
-    md_preds = calc_maha(preds[['phi','psi']].values, phi_psi_dist_c[['phi','psi']].values, most_likely[['phi', 'psi']].values)
-    md_alphafold = calc_maha_for_one(alphafold[['phi','psi']].values[0], phi_psi_dist_c[['phi','psi']].values, most_likely[['phi', 'psi']].values)
-
+    da_xray = calc_da_for_one(most_likely[['phi', 'psi']].values, xray[['phi','psi']].values[0])
+    da_pred = calc_da_for_one(most_likely[['phi', 'psi']].values, pred[['phi','psi']].values[0])
+    da_alphafold = calc_da_for_one(most_likely[['phi', 'psi']].values, alphafold[['phi','psi']].values[0])
+    da_preds = calc_da(most_likely[['phi', 'psi']].values, preds[['phi','psi']].values)
+    print('KDEpeak:', most_likely[['phi', 'psi']].values)
     value_counts = phi_psi_dist.cluster.value_counts().sort_values(ascending=False)
     print('Clusters:', value_counts.to_dict())
-    print('xray:', md_xray)
-    print('pred:', md_pred)
-    print('alphafold:', md_alphafold)
-    print('preds:\n', pd.DataFrame(md_preds).describe())
+    print('xray:', xray.iloc[0].phi, xray.iloc[0].psi, da_xray)
+    print('pred:', pred.phi, pred.psi, da_pred)
+    print('alphafold:', alphafold, da_alphafold)
+    print('preds:\n', pd.DataFrame(da_preds).describe())
 
     fig, ax = plt.subplots(figsize=(9,7))
     sns.kdeplot(data=phi_psi_dist, x='phi', y='psi', ax=ax, weights='weight', levels=8, zorder=0, color='black')
     ax.scatter(preds.phi, preds.psi, color='black', marker='o', s=5, alpha=0.2, label='All Other CASP-14 Predictions', zorder=1)
-    ax.scatter(xray.phi, xray.psi, color=colors[1], marker='o', label='X-ray', zorder=10, s=100)
+    ax.scatter(xray.iloc[0].phi, xray.iloc[0].psi, color=colors[1], marker='o', label='X-ray', zorder=10, s=100)
     ax.scatter(pred.phi, pred.psi,  color=colors[2], marker='o', label=pred_name, zorder=10, s=100)
     ax.scatter(alphafold.phi, alphafold.psi, color=colors[4], marker='o', label='AlphaFold', zorder=10, s=100)
-    ax.scatter(phi_psi_dist_c.phi.mean(), phi_psi_dist_c.psi.mean(), marker='x', label='Mean of Chosen Distribution', color='red', zorder=10, s=100)
-    # ax.scatter(most_likely.phi, most_likely.psi, color='red', marker='x', label='KDE Peak')
+    ax.scatter(most_likely.phi, most_likely.psi, color='red', marker='x', label='KDE Peak')
 
     # dotted line from each point to mean
-    ax.plot([xray.phi.values[0], phi_psi_dist_c.phi.mean()], [xray.psi.values[0], phi_psi_dist_c.psi.mean()], linestyle='dashed', color=colors[1], zorder=1, linewidth=1)
-    ax.plot([pred.phi.values[0], phi_psi_dist_c.phi.mean()], [pred.psi.values[0], phi_psi_dist_c.psi.mean()], linestyle='dashed', color=colors[2], zorder=1, linewidth=1)
-    ax.plot([alphafold.phi.values[0], phi_psi_dist_c.phi.mean()], [alphafold.psi.values[0], phi_psi_dist_c.psi.mean()], linestyle='dashed', color=colors[4], zorder=1, linewidth=1)
+    ax.plot([xray.phi.values[0], most_likely.phi], [xray.psi.values[0], most_likely.psi], linestyle='dashed', color=colors[1], zorder=1, linewidth=1)
+    ax.plot([pred.phi.values[0], most_likely.phi], [pred.psi.values[0], most_likely.psi], linestyle='dashed', color=colors[2], zorder=1, linewidth=1)
+    ax.plot([alphafold.phi.values[0], most_likely.phi], [alphafold.psi.values[0], most_likely.psi], linestyle='dashed', color=colors[4], zorder=1, linewidth=1)
 
     ax.set_xlabel('Phi', fontsize=12)
     ax.set_ylabel('Psi', fontsize=12)
