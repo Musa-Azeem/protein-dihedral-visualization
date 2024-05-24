@@ -18,7 +18,6 @@ from lib.modules import (
 from lib.plotting import (
     plot_one_dist,
     plot_one_dist_3d,
-    plot_clusters_for_seq,
     plot_md_for_seq,
     plot_res_vs_md,
     plot_md_vs_rmsd,
@@ -101,6 +100,7 @@ class DihedralAdherence():
         check_alignment(self.xray_fn, pred_fn)
 
     def compute_structures(self):
+        # TODO: align pos column of predictions with xray_phi_psi using sequence alignment
         self.xray_phi_psi = get_phi_psi_xray(self)
         self.phi_psi_predictions = get_phi_psi_predictions(self)
         if self.phi_psi_mined is not None:
@@ -120,11 +120,11 @@ class DihedralAdherence():
         if self.xray_phi_psi is not None:
             self.get_results_metadata()
     
-    def compute_mds(self, skip_existing=True):
+    def compute_mds(self, replace=True):
         if self.xray_phi_psi is None or self.phi_psi_predictions is None:
             print('Run compute_structures() or load_results() first')
             return
-        get_md_for_all_predictions(self, skip_existing)
+        get_md_for_all_predictions(self, replace)
         self._get_grouped_preds()
 
     def load_results(self):
@@ -176,12 +176,16 @@ class DihedralAdherence():
         seq = seq or self.overlapping_seqs[0]
         plot_one_dist_3d(self, seq, bw_method, fn)
 
-    def plot_clusters_for_seq(self, seq=None, bw_method=-1, fn=None):
-        seq = seq or self.overlapping_seqs[0]
-        plot_clusters_for_seq(self, seq, bw_method, fn)
-
-    def plot_md_for_seq(self, seq=None, pred_id=None, pred_name=None, axlims=None, bw_method=None, fn=None):
-        seq = seq or self.overlapping_seqs[0]
+    def plot_md_for_seq(self, seq=None, i=None, pred_id=None, pred_name=None, axlims=None, bw_method=None, fn=None):
+        if i is None and seq is None:
+            seq = seq or self.overlapping_seqs[0]
+        elif i is not None:
+            if seq is not None:
+                raise ValueError('Only one of i or seq must be provided')
+            seq = self.xray_phi_psi[self.xray_phi_psi.pos == i].seq_ctxt.values
+            if len(seq) == 0:
+                raise ValueError(f'No sequence found for position {i}')
+            seq = seq[0]
         pred_id = pred_id or self.protein_ids[0]
         plot_md_for_seq(self, seq, pred_id, pred_name, bw_method, axlims, fn)
     
