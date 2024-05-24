@@ -21,7 +21,27 @@ AMINO_ACID_CODES = {
     "VAL": "V"
 }
 
-CASP_URLS = {
-    'TARGETLIST': 'https://predictioncenter.org/casp14/targetlist.cgi?type=csv'
+AMINO_ACID_CODES_INV = {v: k for k, v in AMINO_ACID_CODES.items()}
 
+AMINO_ACID_CODE_NAMES = {
+    "A": "Alanine",
+    "R": "Arginine",
+    "N": "Asparagine",
+    "D": "Aspartic Acid",
+    "C": "Cysteine",
+    "Q": "Glutamine",
+    "E": "Glutamic Acid",
+    "G": "Glycine",
+    "H": "Histidine",
+    "I": "Isoleucine",
+    "L": "Leucine",
+    "K": "Lysine",
+    "M": "Methionine",
+    "F": "Phenylalanine",
+    "P": "Proline",
+    "S": "Serine",
+    "T": "Threonine",
+    "W": "Tryptophan",
+    "Y": "Tyrosine",
+    "V": "Valine"
 }

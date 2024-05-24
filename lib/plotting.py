@@ -209,7 +209,7 @@ def plot_res_vs_md(ins, pred_id, pred_name, highlight_res, limit_quantile, legen
     axes[1].set_xlabel('Residue Position in Chain', fontsize=12)
     axes[1].legend(loc=legend_loc)
 
-    fig.text(0.845, 1.70, f'Pred RMSD={ins.results.loc[ins.results.Model == pred_id, 'RMS_CA'].values[0]:.02f}', 
+    fig.text(0.845, 1.70, f'Pred RMSD={ins.results.loc[ins.results.Model == pred_id, "RMS_CA"].values[0]:.02f}', 
              transform=axes[1].transAxes, fontsize=10, verticalalignment='top', 
              bbox=dict(boxstyle='round,pad=0.5', edgecolor='black', facecolor='white'))
 

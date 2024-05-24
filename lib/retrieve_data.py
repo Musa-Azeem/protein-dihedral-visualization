@@ -4,6 +4,8 @@ from pathlib import Path
 import re
 from Bio.PDB import PDBList
 import os
+from Bio import SeqIO
+import warnings
 
 TARGETLIST_URL = 'https://predictioncenter.org/casp14/targetlist.cgi?type=csv'
 PREDICTIONS_URL = 'https://predictioncenter.org/download_area/CASP14/predictions/regular/{casp_protein_id}.tar.gz'
@@ -29,7 +31,12 @@ def retrieve_target_list():
 def retrieve_pdb_file(pdb_code):
     pdbl = PDBList()
     xray_fn = pdbl.retrieve_pdb_file(pdb_code, pdir='pdb', file_format='pdb', obsolete=False)
-    return xray_fn
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+
+        record = next(iter(SeqIO.parse(xray_fn, "pdb-seqres")))
+        residue_chain = str(record.seq)
+    return xray_fn, residue_chain
 
 def retrieve_casp_predictions(casp_protein_id):
     predictions_url = PREDICTIONS_URL.format(casp_protein_id=casp_protein_id)

@@ -24,7 +24,7 @@ from lib.plotting import (
     plot_md_vs_rmsd,
     plot_heatmap
 )
-from lib.constants import AMINO_ACID_CODES
+from lib.constants import AMINO_ACID_CODES, AMINO_ACID_CODES_INV, AMINO_ACID_CODE_NAMES
 import pandas as pd
 import requests
 
@@ -50,7 +50,7 @@ class DihedralAdherence():
 
         # Retrieve results and pdb files for xray and predictions
         self.results = retrieve_casp_results(casp_protein_id)
-        self.xray_fn = retrieve_pdb_file(self.pdb_code)
+        self.xray_fn, self.sequence = retrieve_pdb_file(self.pdb_code)
         self.predictions_dir = retrieve_casp_predictions(casp_protein_id)
 
         # Get sequence and sequence context functions
@@ -71,6 +71,22 @@ class DihedralAdherence():
         self.kdews = [1, 128]
         self.bw_method = None
         self.quantile = 1
+    
+    def get_sequence(self, start, end, code=1):
+        if code == 1:
+            return list(self.sequence[start:end])
+        elif code == 3:
+            return [AMINO_ACID_CODES_INV[aa] for aa in self.sequence[start:end]]
+        elif code == 'name':
+            return [AMINO_ACID_CODE_NAMES[aa] for aa in self.sequence[start:end]]
+
+    def get_window(self, i, code=1): # of size winsize
+        if code == 1:
+            return self.sequence[self.get_seq(i)]
+        elif code == 3:
+            return [AMINO_ACID_CODES_INV[aa] for aa in self.sequence[self.get_seq(i)]]
+        elif code == 'name':
+            return [AMINO_ACID_CODE_NAMES[aa] for aa in self.sequence[self.get_seq(i)]]
 
     def check_alignment(self, i=None, pred_id=None):
         if i and pred_id:
