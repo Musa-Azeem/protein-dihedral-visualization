@@ -18,18 +18,17 @@ from lib.modules import (
 from lib.plotting import (
     plot_one_dist,
     plot_one_dist_3d,
-    plot_clusters_for_seq,
     plot_md_for_seq,
     plot_res_vs_md,
     plot_md_vs_rmsd,
     plot_heatmap
 )
-from lib.constants import AMINO_ACID_CODES
+from lib.constants import AMINO_ACID_CODES, AMINO_ACID_CODES_INV, AMINO_ACID_CODE_NAMES
 import pandas as pd
 import requests
 
 class DihedralAdherence():
-    def __init__(self, casp_protein_id, winsize, winsize_ctxt, pdbmine_url, projects_dir='tests'):
+    def __init__(self, casp_protein_id, winsize, winsize_ctxt, pdbmine_url, projects_dir='tests', kdews=[1, 128]):
         self.casp_protein_id = casp_protein_id
         self.winsize = winsize
         self.winsize_ctxt = winsize_ctxt
@@ -50,7 +49,7 @@ class DihedralAdherence():
 
         # Retrieve results and pdb files for xray and predictions
         self.results = retrieve_casp_results(casp_protein_id)
-        self.xray_fn = retrieve_pdb_file(self.pdb_code)
+        self.xray_fn, self.sequence = retrieve_pdb_file(self.pdb_code)
         self.predictions_dir = retrieve_casp_predictions(casp_protein_id)
 
         # Get sequence and sequence context functions
@@ -68,9 +67,25 @@ class DihedralAdherence():
         self.grouped_preds_md = None
         self.model = None
 
-        self.kdews = [1, 128]
+        self.kdews = kdews
         self.bw_method = None
         self.quantile = 1
+    
+    def get_sequence(self, start, end, code=1):
+        if code == 1:
+            return list(self.sequence[start:end])
+        elif code == 3:
+            return [AMINO_ACID_CODES_INV[aa] for aa in self.sequence[start:end]]
+        elif code == 'name':
+            return [AMINO_ACID_CODE_NAMES[aa] for aa in self.sequence[start:end]]
+
+    def get_window(self, i, code=1): # of size winsize
+        if code == 1:
+            return self.sequence[self.get_seq(i)]
+        elif code == 3:
+            return [AMINO_ACID_CODES_INV[aa] for aa in self.sequence[self.get_seq(i)]]
+        elif code == 'name':
+            return [AMINO_ACID_CODE_NAMES[aa] for aa in self.sequence[self.get_seq(i)]]
 
     def check_alignment(self, i=None, pred_id=None):
         if i and pred_id:
@@ -85,6 +100,7 @@ class DihedralAdherence():
         check_alignment(self.xray_fn, pred_fn)
 
     def compute_structures(self):
+        # TODO: align pos column of predictions with xray_phi_psi using sequence alignment
         self.xray_phi_psi = get_phi_psi_xray(self)
         self.phi_psi_predictions = get_phi_psi_predictions(self)
         if self.phi_psi_mined is not None:
@@ -104,11 +120,11 @@ class DihedralAdherence():
         if self.xray_phi_psi is not None:
             self.get_results_metadata()
     
-    def compute_mds(self, skip_existing=True):
+    def compute_mds(self, replace=True):
         if self.xray_phi_psi is None or self.phi_psi_predictions is None:
             print('Run compute_structures() or load_results() first')
             return
-        get_md_for_all_predictions(self, skip_existing)
+        get_md_for_all_predictions(self, replace)
         self._get_grouped_preds()
 
     def load_results(self):
@@ -118,11 +134,11 @@ class DihedralAdherence():
         self.phi_psi_predictions = pd.read_csv(self.outdir / 'phi_psi_predictions.csv')
         self.get_results_metadata()
         # Temporary:
-        if not 'weight' in self.phi_psi_mined.columns:
-            self.phi_psi_mined['weight'] = self.kdews[0]
-            self.phi_psi_mined_ctxt['weight'] = self.kdews[1]
-            self.phi_psi_mined.to_csv(self.outdir / f'phi_psi_mined_win{self.winsize}.csv', index=False)
-            self.phi_psi_mined_ctxt.to_csv(self.outdir / f'phi_psi_mined_win{self.winsize_ctxt}.csv', index=False)
+        # if not 'weight' in self.phi_psi_mined.columns:
+        self.phi_psi_mined['weight'] = self.kdews[0]
+        self.phi_psi_mined_ctxt['weight'] = self.kdews[1]
+        self.phi_psi_mined.to_csv(self.outdir / f'phi_psi_mined_win{self.winsize}.csv', index=False)
+        self.phi_psi_mined_ctxt.to_csv(self.outdir / f'phi_psi_mined_win{self.winsize_ctxt}.csv', index=False)
 
     def load_results_md(self):
         self.phi_psi_mined = pd.read_csv(self.outdir / f'phi_psi_mined_win{self.winsize}.csv')
@@ -132,11 +148,11 @@ class DihedralAdherence():
         self.get_results_metadata()
         self._get_grouped_preds()
         # Temporary:
-        if not 'weight' in self.phi_psi_mined.columns:
-            self.phi_psi_mined['weight'] = self.kdews[0]
-            self.phi_psi_mined_ctxt['weight'] = self.kdews[1]
-            self.phi_psi_mined.to_csv(self.outdir / f'phi_psi_mined_win{self.winsize}.csv', index=False)
-            self.phi_psi_mined_ctxt.to_csv(self.outdir / f'phi_psi_mined_win{self.winsize_ctxt}.csv', index=False)
+        # if not 'weight' in self.phi_psi_mined.columns:
+        self.phi_psi_mined['weight'] = self.kdews[0]
+        self.phi_psi_mined_ctxt['weight'] = self.kdews[1]
+        self.phi_psi_mined.to_csv(self.outdir / f'phi_psi_mined_win{self.winsize}.csv', index=False)
+        self.phi_psi_mined_ctxt.to_csv(self.outdir / f'phi_psi_mined_win{self.winsize_ctxt}.csv', index=False)
 
     def get_results_metadata(self):
         self.overlapping_seqs = list(
@@ -156,18 +172,30 @@ class DihedralAdherence():
         pred_id = pred_id or self.protein_ids[0]
         plot_one_dist(self, seq, pred_id, pred_name, axlims, bw_method, fn)
 
-    def plot_one_dist_3d(self, seq=None, bw_method=-1, fn=None):
-        seq = seq or self.overlapping_seqs[0]
+    def plot_one_dist_3d(self, seq=None, i=None, bw_method=-1, fn=None):
+        if i is None and seq is None:
+            seq = seq or self.overlapping_seqs[0]
+        elif i is not None:
+            if seq is not None:
+                raise ValueError('Only one of i or seq must be provided')
+            seq = self.xray_phi_psi[self.xray_phi_psi.pos == i].seq_ctxt.values
+            if len(seq) == 0:
+                raise ValueError(f'No sequence found for position {i}')
+            seq = seq[0]
         plot_one_dist_3d(self, seq, bw_method, fn)
 
-    def plot_clusters_for_seq(self, seq=None, bw_method=-1, fn=None):
-        seq = seq or self.overlapping_seqs[0]
-        plot_clusters_for_seq(self, seq, bw_method, fn)
-
-    def plot_md_for_seq(self, seq=None, pred_id=None, pred_name=None, axlims=None, bw_method=None, fn=None):
-        seq = seq or self.overlapping_seqs[0]
+    def plot_md_for_seq(self, seq=None, i=None, pred_id=None, pred_name=None, axlims=None, bw_method=None, fn=None, fill=False):
+        if i is None and seq is None:
+            seq = seq or self.overlapping_seqs[0]
+        elif i is not None:
+            if seq is not None:
+                raise ValueError('Only one of i or seq must be provided')
+            seq = self.xray_phi_psi[self.xray_phi_psi.pos == i].seq_ctxt.values
+            if len(seq) == 0:
+                raise ValueError(f'No sequence found for position {i}')
+            seq = seq[0]
         pred_id = pred_id or self.protein_ids[0]
-        plot_md_for_seq(self, seq, pred_id, pred_name, axlims, bw_method, fn)
+        plot_md_for_seq(self, seq, pred_id, pred_name, bw_method, axlims, fn, fill)
     
     def plot_res_vs_md(self, pred_id=None, pred_name=None, highlight_res=None, limit_quantile=None, legend_loc='upper right', fn=None):
         highlight_res = highlight_res or []

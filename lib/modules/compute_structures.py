@@ -45,6 +45,7 @@ def get_phi_psi_for_structure(ins, protein_structure, protein_id):
     resultDict = structure_rebuild_test(protein_structure)
     if not resultDict['pass']:
         raise Exception('Failed to rebuild')
+    # TODO if you index the chain object you get position in chain rather than index in list
     residues = list(protein_structure.get_residues())
     phi_psi_ = []
     for i in range(ins.winsize_ctxt//2, len(residues) - ins.winsize_ctxt // 2):

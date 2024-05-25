@@ -86,6 +86,21 @@ def find_phi_psi_c(phi_psi_dist, phi_psi_ctxt_dist, bw_method):
     ))
     return phi_psi_dist, phi_psi_dist_c, most_likely
 
+def find_kdepeak(phi_psi_dist, phi_psi_ctxt_dist, bw_method):
+    phi_psi_dist = pd.concat([phi_psi_dist, phi_psi_ctxt_dist])
+    # Find probability of each point
+    kernel = gaussian_kde(phi_psi_dist[['phi','psi']].T, weights=phi_psi_dist['weight'], bw_method=bw_method)
+    kdepeak = phi_psi_dist.iloc[kernel(phi_psi_dist[['phi', 'psi']].values.T).argmax()]
+    phi_psi_dist['prob'] = kernel(phi_psi_dist[['phi', 'psi']].values.T)
+
+    return kdepeak
+
+def calc_da_for_one(kdepeak, phi_psi):
+    return np.sqrt((phi_psi[0] - kdepeak[0])**2 + (phi_psi[1] - kdepeak[1])**2)
+
+def calc_da(kdepeak, phi_psi_preds):
+    return np.sqrt(((phi_psi_preds[:,0] - kdepeak[0])**2) + ((phi_psi_preds[:,1] - kdepeak[1])**2))
+
 def calc_maha_for_one(phi_psi: np.ndarray, phi_psi_dist: np.ndarray, kdepeak):    
     cov = np.cov(phi_psi_dist.T)
     if np.diag(cov).min() < 1:
@@ -111,11 +126,3 @@ def calc_maha(phi_psi_preds: np.ndarray, phi_psi_dist: np.ndarray, kdepeak):
     icov = np.linalg.inv(cov)
     diff = phi_psi_preds - phi_psi_dist.mean(axis=0)
     return np.sqrt((np.expand_dims((diff), 1) @ icov @ np.expand_dims((diff), 2)).squeeze())
-
-def get_grouped_predictions(ins, quantile):
-    grouped_preds = ins.phi_psi_predictions.groupby('protein_id', as_index=False).agg(
-        md=('md', lambda x: x[x < x.quantile(quantile)].agg('mean')), 
-        md_std=('md', lambda x: x[x < x.quantile(quantile)].agg('std')),
-        md_na=('md_na', lambda x: x.sum() / len(x)),
-    )
-    group_pred_mds = ins.phi_psi_predictions.pivot(index='protein_id', columns='pos', values='md')
