@@ -28,7 +28,7 @@ import pandas as pd
 import requests
 
 class DihedralAdherence():
-    def __init__(self, casp_protein_id, winsize, winsize_ctxt, pdbmine_url, projects_dir='tests'):
+    def __init__(self, casp_protein_id, winsize, winsize_ctxt, pdbmine_url, projects_dir='tests', kdews=[1, 128]):
         self.casp_protein_id = casp_protein_id
         self.winsize = winsize
         self.winsize_ctxt = winsize_ctxt
@@ -67,7 +67,7 @@ class DihedralAdherence():
         self.grouped_preds_md = None
         self.model = None
 
-        self.kdews = [1, 128]
+        self.kdews = kdews
         self.bw_method = None
         self.quantile = 1
     
@@ -134,11 +134,11 @@ class DihedralAdherence():
         self.phi_psi_predictions = pd.read_csv(self.outdir / 'phi_psi_predictions.csv')
         self.get_results_metadata()
         # Temporary:
-        if not 'weight' in self.phi_psi_mined.columns:
-            self.phi_psi_mined['weight'] = self.kdews[0]
-            self.phi_psi_mined_ctxt['weight'] = self.kdews[1]
-            self.phi_psi_mined.to_csv(self.outdir / f'phi_psi_mined_win{self.winsize}.csv', index=False)
-            self.phi_psi_mined_ctxt.to_csv(self.outdir / f'phi_psi_mined_win{self.winsize_ctxt}.csv', index=False)
+        # if not 'weight' in self.phi_psi_mined.columns:
+        self.phi_psi_mined['weight'] = self.kdews[0]
+        self.phi_psi_mined_ctxt['weight'] = self.kdews[1]
+        self.phi_psi_mined.to_csv(self.outdir / f'phi_psi_mined_win{self.winsize}.csv', index=False)
+        self.phi_psi_mined_ctxt.to_csv(self.outdir / f'phi_psi_mined_win{self.winsize_ctxt}.csv', index=False)
 
     def load_results_md(self):
         self.phi_psi_mined = pd.read_csv(self.outdir / f'phi_psi_mined_win{self.winsize}.csv')
@@ -148,11 +148,11 @@ class DihedralAdherence():
         self.get_results_metadata()
         self._get_grouped_preds()
         # Temporary:
-        if not 'weight' in self.phi_psi_mined.columns:
-            self.phi_psi_mined['weight'] = self.kdews[0]
-            self.phi_psi_mined_ctxt['weight'] = self.kdews[1]
-            self.phi_psi_mined.to_csv(self.outdir / f'phi_psi_mined_win{self.winsize}.csv', index=False)
-            self.phi_psi_mined_ctxt.to_csv(self.outdir / f'phi_psi_mined_win{self.winsize_ctxt}.csv', index=False)
+        # if not 'weight' in self.phi_psi_mined.columns:
+        self.phi_psi_mined['weight'] = self.kdews[0]
+        self.phi_psi_mined_ctxt['weight'] = self.kdews[1]
+        self.phi_psi_mined.to_csv(self.outdir / f'phi_psi_mined_win{self.winsize}.csv', index=False)
+        self.phi_psi_mined_ctxt.to_csv(self.outdir / f'phi_psi_mined_win{self.winsize_ctxt}.csv', index=False)
 
     def get_results_metadata(self):
         self.overlapping_seqs = list(
@@ -172,11 +172,19 @@ class DihedralAdherence():
         pred_id = pred_id or self.protein_ids[0]
         plot_one_dist(self, seq, pred_id, pred_name, axlims, bw_method, fn)
 
-    def plot_one_dist_3d(self, seq=None, bw_method=-1, fn=None):
-        seq = seq or self.overlapping_seqs[0]
+    def plot_one_dist_3d(self, seq=None, i=None, bw_method=-1, fn=None):
+        if i is None and seq is None:
+            seq = seq or self.overlapping_seqs[0]
+        elif i is not None:
+            if seq is not None:
+                raise ValueError('Only one of i or seq must be provided')
+            seq = self.xray_phi_psi[self.xray_phi_psi.pos == i].seq_ctxt.values
+            if len(seq) == 0:
+                raise ValueError(f'No sequence found for position {i}')
+            seq = seq[0]
         plot_one_dist_3d(self, seq, bw_method, fn)
 
-    def plot_md_for_seq(self, seq=None, i=None, pred_id=None, pred_name=None, axlims=None, bw_method=None, fn=None):
+    def plot_md_for_seq(self, seq=None, i=None, pred_id=None, pred_name=None, axlims=None, bw_method=None, fn=None, fill=False):
         if i is None and seq is None:
             seq = seq or self.overlapping_seqs[0]
         elif i is not None:
@@ -187,7 +195,7 @@ class DihedralAdherence():
                 raise ValueError(f'No sequence found for position {i}')
             seq = seq[0]
         pred_id = pred_id or self.protein_ids[0]
-        plot_md_for_seq(self, seq, pred_id, pred_name, bw_method, axlims, fn)
+        plot_md_for_seq(self, seq, pred_id, pred_name, bw_method, axlims, fn, fill)
     
     def plot_res_vs_md(self, pred_id=None, pred_name=None, highlight_res=None, limit_quantile=None, legend_loc='upper right', fn=None):
         highlight_res = highlight_res or []

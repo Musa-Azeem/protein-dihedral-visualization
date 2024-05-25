@@ -91,7 +91,7 @@ def plot_one_dist_3d(ins, seq, bw_method, fn):
         plt.savefig(fn, bbox_inches='tight', dpi=300)
     plt.show()
 
-def plot_md_for_seq(ins, seq, pred_id, pred_name, bw_method, axlims, fn):
+def plot_md_for_seq(ins, seq, pred_id, pred_name, bw_method, axlims, fn, fill):
     pred_name = pred_name or pred_id[5:]
     bw_method = bw_method or ins.bw_method
     inner_seq = ins.get_subseq(seq)
@@ -132,7 +132,12 @@ def plot_md_for_seq(ins, seq, pred_id, pred_name, bw_method, axlims, fn):
     print('Other Predictions DA:\n', pd.DataFrame(da_preds).describe())
 
     fig, ax = plt.subplots(figsize=(9,7))
-    sns.kdeplot(data=phi_psi_dist, x='phi', y='psi', ax=ax, weights='weight', levels=8, zorder=0, color='black')
+    sns.kdeplot(
+        data=pd.concat([phi_psi_dist, phi_psi_ctxt_dist]), 
+        x='phi', y='psi', weights='weight',
+        ax=ax, levels=8, zorder=0, 
+        fill=fill, color='black'
+    )
     ax.scatter(preds.phi, preds.psi, color='black', marker='o', s=5, alpha=0.2, label='All Other CASP-14 Predictions', zorder=1)
     ax.scatter(xray.iloc[0].phi, xray.iloc[0].psi, color=colors[1], marker='o', label='X-ray', zorder=10, s=100)
     ax.scatter(pred.phi, pred.psi,  color=colors[2], marker='o', label=pred_name, zorder=10, s=100)
