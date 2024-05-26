@@ -4,8 +4,8 @@ import statsmodels.api as sm
 
 def fit_linregr(ins):
     ins.grouped_preds = ins.grouped_preds.sort_values('protein_id')
-    ins.grouped_preds_md = ins.grouped_preds_md.sort_values('protein_id')
-    X = ins.grouped_preds_md.values
+    ins.grouped_preds_da = ins.grouped_preds_da.sort_values('protein_id')
+    X = ins.grouped_preds_da.values
     y = ins.grouped_preds.RMS_CA.values
     X[np.isnan(X)] = 0
 
