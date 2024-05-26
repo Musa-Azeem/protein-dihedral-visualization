@@ -13,7 +13,7 @@ def get_phi_psi_xray(ins):
         xray_structure = parser.get_structure(ins.pdb_code, ins.xray_fn)
         xray_chain = list(xray_structure[0].get_chains())[0]
         xray_phi_psi = get_phi_psi_for_structure(ins, xray_structure, ins.pdb_code)
-        xray_phi_psi = pd.DataFrame(xray_phi_psi, columns=['pos', 'seq', 'seq_ctxt', 'res', 'phi', 'psi', 'protein_id'])
+        xray_phi_psi = pd.DataFrame(xray_phi_psi, columns=['pos', 'seq_ctxt', 'res', 'phi', 'psi', 'protein_id'])
         xray_phi_psi.to_csv(ins.outdir / 'xray_phi_psi.csv', index=False)
     else:
         xray_phi_psi = pd.read_csv(ins.outdir / 'xray_phi_psi.csv')
@@ -33,7 +33,7 @@ def get_phi_psi_predictions(ins):
                 except Exception as e:
                     print(e)
 
-        phi_psi_predictions = pd.DataFrame(phi_psi_predictions_, columns=['pos', 'seq', 'seq_ctxt', 'res', 'phi', 'psi', 'protein_id'])
+        phi_psi_predictions = pd.DataFrame(phi_psi_predictions_, columns=['pos', 'seq_ctxt', 'res', 'phi', 'psi', 'protein_id'])
         phi_psi_predictions.to_csv(ins.outdir / 'phi_psi_predictions.csv', index=False)
     else:
         phi_psi_predictions = pd.read_csv(ins.outdir / 'phi_psi_predictions.csv')
@@ -50,10 +50,9 @@ def get_phi_psi_for_structure(ins, protein_structure, protein_id):
     phi_psi_ = []
     for i in range(ins.winsize_ctxt//2, len(residues) - ins.winsize_ctxt // 2):
         # Convert 3 char codes to 1 char codes
-        seq = ''.join([AMINO_ACID_CODES.get(r.resname, 'X') for r in residues[ins.get_seq(i)]])
-        seq_ctxt = ''.join([AMINO_ACID_CODES.get(r.resname, 'X') for r in residues[ins.get_seq_ctxt(i)]])
+        seq_ctxt = ''.join([AMINO_ACID_CODES.get(r.resname, 'X') for r in ins.get_seq_ctxt(residues, i)])
         # Get the center residue
-        res = ins.get_center(seq)
+        res = ins.get_center(seq_ctxt)
         if not residues[i].internal_coord:
             psi,phi = np.nan, np.nan
         else:
@@ -61,7 +60,7 @@ def get_phi_psi_for_structure(ins, protein_structure, protein_id):
             phi = residues[i].internal_coord.get_angle("phi")
             psi = psi if psi else np.nan # if psi is None, set it to np.nan
             phi = phi if phi else np.nan # if phi is None, set it to np.nan
-        phi_psi_.append([i, seq, seq_ctxt, res, phi, psi, protein_id])
+        phi_psi_.append([i, seq_ctxt, res, phi, psi, protein_id])
     return phi_psi_
 
 def seq_filter(ins):

@@ -7,22 +7,23 @@ from scipy.stats import linregress
 import seaborn as sns
 from sklearn.ensemble import RandomForestRegressor
 
-def fit_lr(protein_ids: list, winsize, winsize_ctxt, pdbmine_url, project_dir, n_comp=1000):
+def fit_lr(protein_ids: list, winsizes, kdews, pdbmine_url, project_dir, n_comp=1000):
     X = []
     y = []
     grouped_preds = []
-    grouped_preds_md = []
+    grouped_preds_da = []
     longest_protein = 0
     for protein_id in protein_ids:
-        da = DihedralAdherence(protein_id, winsize, winsize_ctxt, pdbmine_url, project_dir)
-        # da.compute_structures()
-        # da.query_pdbmine()
-        # da.compute_mds()
-        da.load_results_md()
+        da = DihedralAdherence(protein_id, winsizes, pdbmine_url, project_dir, kdews=kdews)
+        da.compute_structures()
+        da.query_pdbmine()
+        da.load_results()
+        da.compute_das(replace=True)
+        # da.load_results_da()
         da.filter_nas()
         grouped_preds.append(da.grouped_preds.sort_values(['protein_id']))
-        grouped_preds_md.append(da.grouped_preds_md.sort_values(['protein_id']))
-        Xi = da.grouped_preds_md.sort_values('protein_id').values
+        grouped_preds_da.append(da.grouped_preds_da.sort_values(['protein_id']))
+        Xi = da.grouped_preds_da.sort_values('protein_id').values
         Xi[np.isnan(Xi)] = 0
 
         if Xi.shape[1] > longest_protein:
@@ -68,7 +69,7 @@ def predict_lr(model, protein_ids, winsize, winsize_ctxt, pdbmine_url, project_d
     X = []
     y = []
     grouped_preds = []
-    grouped_preds_md = []
+    grouped_preds_da = []
     for protein_id in protein_ids:
         da = DihedralAdherence(protein_id, winsize, winsize_ctxt, pdbmine_url, project_dir)
         # da.compute_structures()
@@ -77,8 +78,8 @@ def predict_lr(model, protein_ids, winsize, winsize_ctxt, pdbmine_url, project_d
         da.load_results_md()
         da.filter_nas()
         grouped_preds.append(da.grouped_preds.sort_values(['protein_id']))
-        grouped_preds_md.append(da.grouped_preds_md.sort_values(['protein_id']))
-        Xi = da.grouped_preds_md.sort_values('protein_id').values
+        grouped_preds_da.append(da.grouped_preds_da.sort_values(['protein_id']))
+        Xi = da.grouped_preds_da.sort_values('protein_id').values
         Xi[np.isnan(Xi)] = 0
         
 
@@ -112,7 +113,7 @@ def fit_rf(protein_ids: list, winsize, winsize_ctxt, pdbmine_url, project_dir, n
         da.load_results_md()
         da.filter_nas()
         grouped_preds.append(da.grouped_preds.sort_values(['protein_id']))
-        Xi = da.grouped_preds_md.sort_values('protein_id').values
+        Xi = da.grouped_preds_da.sort_values('protein_id').values
         Xi = np.pad(Xi, ((0, 0), (0, n_comp - Xi.shape[1])), mode='constant', constant_values=0)
         X.append(Xi)
         y.append(grouped_preds[-1]['RMS_CA'].values)
@@ -138,7 +139,7 @@ def predict_rf(rf, protein_ids, winsize, winsize_ctxt, pdbmine_url, project_dir,
         da.load_results_md()
         da.filter_nas()
         grouped_preds.append(da.grouped_preds.sort_values(['protein_id']))
-        Xi = da.grouped_preds_md.sort_values('protein_id').values
+        Xi = da.grouped_preds_da.sort_values('protein_id').values
         Xi = np.pad(Xi, ((0, 0), (0, n_comp - Xi.shape[1])), mode='constant', constant_values=0)
 
         if Xi.shape[1] > longest_protein:

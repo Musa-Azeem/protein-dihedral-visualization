@@ -1,5 +1,6 @@
 from pathlib import Path
 import numpy as np
+from lib import PDBMineQuery
 from lib.retrieve_data import (
     retrieve_target_list, 
     retrieve_pdb_file, 
@@ -12,15 +13,15 @@ from lib.modules import (
     get_phi_psi_predictions,
     query_and_process_pdbmine,
     seq_filter,
-    get_md_for_all_predictions,
+    get_da_for_all_predictions,
     fit_linregr
 )
 from lib.plotting import (
     plot_one_dist,
     plot_one_dist_3d,
-    plot_md_for_seq,
-    plot_res_vs_md,
-    plot_md_vs_rmsd,
+    plot_da_for_seq,
+    plot_res_vs_da,
+    plot_da_vs_rmsd,
     plot_heatmap
 )
 from lib.constants import AMINO_ACID_CODES, AMINO_ACID_CODES_INV, AMINO_ACID_CODE_NAMES
@@ -28,12 +29,12 @@ import pandas as pd
 import requests
 
 class DihedralAdherence():
-    def __init__(self, casp_protein_id, winsize, winsize_ctxt, pdbmine_url, projects_dir='tests', kdews=[1, 128]):
+    def __init__(self, casp_protein_id, winsizes, pdbmine_url, projects_dir='tests', kdews=None):
         self.casp_protein_id = casp_protein_id
-        self.winsize = winsize
-        self.winsize_ctxt = winsize_ctxt
+        self.winsizes = winsizes
+        self.winsize_ctxt = winsizes[-1]
         self.pdbmine_url = pdbmine_url
-        self.outdir = Path(f'{projects_dir}/{casp_protein_id}_win{winsize}-{winsize_ctxt}')
+        self.outdir = Path(f'{projects_dir}/{casp_protein_id}_win{"-".join([str(w) for w in winsizes])}')
         if self.outdir.exists():
             print('Results already exist')
         else:
@@ -53,24 +54,30 @@ class DihedralAdherence():
         self.predictions_dir = retrieve_casp_predictions(casp_protein_id)
 
         # Get sequence and sequence context functions
-        self.get_center, self.get_seq, self.get_seq_ctxt, self.get_subseq = \
-            get_seq_funcs(winsize, winsize_ctxt)
+        _, self.get_center, self.get_seq_ctxt = get_seq_funcs(self.winsize_ctxt)
         
         self.xray_phi_psi = None
         self.phi_psi_predictions = None
-        self.phi_psi_mined = None
-        self.phi_psi_mined_ctxt = None
         self.overlapping_seqs = None
         self.seqs = None
         self.protein_ids = None
         self.grouped_preds = None
-        self.grouped_preds_md = None
+        self.grouped_preds_da = None
         self.model = None
 
-        self.kdews = kdews
         self.bw_method = None
         self.quantile = 1
-    
+        self.kdews = [1] * len(winsizes) if kdews is None else kdews
+
+        self.queries = []
+        for i,winsize in enumerate(self.winsizes):
+            self.queries.append(PDBMineQuery(
+                self.casp_protein_id, self.pdb_code, winsize, self.pdbmine_url,
+                self.sequence, self.kdews[i]
+            ))
+            self.queries[-1].set_get_subseq(self.winsize_ctxt)
+        self.queried = False
+
     def get_sequence(self, start, end, code=1):
         if code == 1:
             return list(self.sequence[start:end])
@@ -81,11 +88,11 @@ class DihedralAdherence():
 
     def get_window(self, i, code=1): # of size winsize
         if code == 1:
-            return self.sequence[self.get_seq(i)]
+            return self.get_seq_ctxt(self.sequence, i)
         elif code == 3:
-            return [AMINO_ACID_CODES_INV[aa] for aa in self.sequence[self.get_seq(i)]]
+            return [AMINO_ACID_CODES_INV[aa] for aa in self.get_seq_ctxt(self.sequence, i)]
         elif code == 'name':
-            return [AMINO_ACID_CODE_NAMES[aa] for aa in self.sequence[self.get_seq(i)]]
+            return [AMINO_ACID_CODE_NAMES[aa] for aa in self.get_seq_ctxt(self.sequence, i)]
 
     def check_alignment(self, i=None, pred_id=None):
         if i and pred_id:
@@ -103,7 +110,7 @@ class DihedralAdherence():
         # TODO: align pos column of predictions with xray_phi_psi using sequence alignment
         self.xray_phi_psi = get_phi_psi_xray(self)
         self.phi_psi_predictions = get_phi_psi_predictions(self)
-        if self.phi_psi_mined is not None:
+        if self.queried:
             self.get_results_metadata()
         # filter
         seq_filter(self)
@@ -114,49 +121,45 @@ class DihedralAdherence():
         return response.ok
 
     def query_pdbmine(self):
-        self.phi_psi_mined, self.phi_psi_mined_ctxt = query_and_process_pdbmine(self)
-        self.phi_psi_mined['weight'] = self.kdews[0]
-        self.phi_psi_mined_ctxt['weight'] = self.kdews[1]
+        for query in self.queries:
+            query.query_and_process_pdbmine()
+            query.results.to_csv(self.outdir / f'phi_psi_mined_win{query.winsize}.csv', index=False)
+        self.queried = True
+
         if self.xray_phi_psi is not None:
             self.get_results_metadata()
     
-    def compute_mds(self, replace=True):
+    def compute_das(self, replace=True):
         if self.xray_phi_psi is None or self.phi_psi_predictions is None:
             print('Run compute_structures() or load_results() first')
             return
-        get_md_for_all_predictions(self, replace)
+        get_da_for_all_predictions(self, replace)
         self._get_grouped_preds()
 
     def load_results(self):
-        self.phi_psi_mined = pd.read_csv(self.outdir / f'phi_psi_mined_win{self.winsize}.csv')
-        self.phi_psi_mined_ctxt = pd.read_csv(self.outdir / f'phi_psi_mined_win{self.winsize_ctxt}.csv')
+        for query in self.queries:
+            query.results = pd.read_csv(self.outdir / f'phi_psi_mined_win{query.winsize}.csv')
+            query.results['weight'] = query.weight
+        self.queried = True
         self.xray_phi_psi = pd.read_csv(self.outdir / 'xray_phi_psi.csv')
         self.phi_psi_predictions = pd.read_csv(self.outdir / 'phi_psi_predictions.csv')
         self.get_results_metadata()
-        # Temporary:
-        # if not 'weight' in self.phi_psi_mined.columns:
-        self.phi_psi_mined['weight'] = self.kdews[0]
-        self.phi_psi_mined_ctxt['weight'] = self.kdews[1]
-        self.phi_psi_mined.to_csv(self.outdir / f'phi_psi_mined_win{self.winsize}.csv', index=False)
-        self.phi_psi_mined_ctxt.to_csv(self.outdir / f'phi_psi_mined_win{self.winsize_ctxt}.csv', index=False)
-
-    def load_results_md(self):
-        self.phi_psi_mined = pd.read_csv(self.outdir / f'phi_psi_mined_win{self.winsize}.csv')
-        self.phi_psi_mined_ctxt = pd.read_csv(self.outdir / f'phi_psi_mined_win{self.winsize_ctxt}.csv')
-        self.xray_phi_psi = pd.read_csv(self.outdir / 'xray_phi_psi_md.csv')
-        self.phi_psi_predictions = pd.read_csv(self.outdir / 'phi_psi_predictions_md.csv')
+        
+    def load_results_da(self):
+        for query in self.queries:
+            query.results = pd.read_csv(self.outdir / f'phi_psi_mined_win{query.winsize}.csv')
+            if query.results['weight'].values[0] != query.weight:
+                print('WARNING: Weights used to calculate DA are different')
+            query.results['weight'] = query.weight
+        self.queried = True
+        self.xray_phi_psi = pd.read_csv(self.outdir / 'xray_phi_psi_da.csv')
+        self.phi_psi_predictions = pd.read_csv(self.outdir / 'phi_psi_predictions_da.csv')
         self.get_results_metadata()
         self._get_grouped_preds()
-        # Temporary:
-        # if not 'weight' in self.phi_psi_mined.columns:
-        self.phi_psi_mined['weight'] = self.kdews[0]
-        self.phi_psi_mined_ctxt['weight'] = self.kdews[1]
-        self.phi_psi_mined.to_csv(self.outdir / f'phi_psi_mined_win{self.winsize}.csv', index=False)
-        self.phi_psi_mined_ctxt.to_csv(self.outdir / f'phi_psi_mined_win{self.winsize_ctxt}.csv', index=False)
 
     def get_results_metadata(self):
         self.overlapping_seqs = list(
-            set(self.phi_psi_mined_ctxt.seq) & 
+            set(self.queries[-1].results.seq) & 
             set(self.phi_psi_predictions.seq_ctxt) & 
             set(self.xray_phi_psi.seq_ctxt)
         )
@@ -184,7 +187,7 @@ class DihedralAdherence():
             seq = seq[0]
         plot_one_dist_3d(self, seq, bw_method, fn)
 
-    def plot_md_for_seq(self, seq=None, i=None, pred_id=None, pred_name=None, axlims=None, bw_method=None, fn=None, fill=False):
+    def plot_da_for_seq(self, seq=None, i=None, pred_id=None, pred_name=None, axlims=None, bw_method=None, fn=None, fill=False):
         if i is None and seq is None:
             seq = seq or self.overlapping_seqs[0]
         elif i is not None:
@@ -195,38 +198,38 @@ class DihedralAdherence():
                 raise ValueError(f'No sequence found for position {i}')
             seq = seq[0]
         pred_id = pred_id or self.protein_ids[0]
-        plot_md_for_seq(self, seq, pred_id, pred_name, bw_method, axlims, fn, fill)
+        plot_da_for_seq(self, seq, pred_id, pred_name, bw_method, axlims, fn, fill)
     
-    def plot_res_vs_md(self, pred_id=None, pred_name=None, highlight_res=None, limit_quantile=None, legend_loc='upper right', fn=None):
+    def plot_res_vs_da(self, pred_id=None, pred_name=None, highlight_res=None, limit_quantile=None, legend_loc='upper right', fn=None):
         highlight_res = highlight_res or []
-        if not 'md' in self.phi_psi_predictions.columns:
-            print('No MD data available. Run compute_mds() or load_results_md() first')
+        if not 'da' in self.phi_psi_predictions.columns:
+            print('No DA data available. Run compute_das() or load_results_da() first')
             return
         protein_id = pred_id or self.protein_ids[0]
-        return plot_res_vs_md(self, protein_id, pred_name, highlight_res, limit_quantile, legend_loc, fn)
+        return plot_res_vs_da(self, protein_id, pred_name, highlight_res, limit_quantile, legend_loc, fn)
     
-    def plot_md_vs_rmsd(self, axlims=None, fn=None):
-        if not 'md' in self.phi_psi_predictions.columns:
-            print('No MD data available. Run compute_mds() or load_results_md() first')
+    def plot_da_vs_rmsd(self, axlims=None, fn=None):
+        if not 'da' in self.phi_psi_predictions.columns:
+            print('No DA data available. Run compute_das() or load_results_da() first')
             return
         if not 'rms_pred' in self.grouped_preds.columns:
             self.fit_model()
         else:
             print(f'Model R-squared: {self.model.rsquared:.6f}, Adj R-squared: {self.model.rsquared_adj:.6f}, p-value: {self.model.f_pvalue}')
-        plot_md_vs_rmsd(self, axlims, fn)
+        plot_da_vs_rmsd(self, axlims, fn)
     
     def plot_heatmap(self, fillna=True, fn=None):
-        if not 'md' in self.phi_psi_predictions.columns:
-            print('No MD data available. Run compute_mds() or load_results_md() first')
+        if not 'da' in self.phi_psi_predictions.columns:
+            print('No DA data available. Run compute_das() or load_results_da() first')
             return
         plot_heatmap(self, fillna, fn)
 
     def _get_grouped_preds(self):
-        self.phi_psi_predictions['md_na'] = self.phi_psi_predictions.md.isna()
+        self.phi_psi_predictions['da_na'] = self.phi_psi_predictions.da.isna()
         self.grouped_preds = self.phi_psi_predictions.groupby('protein_id', as_index=False).agg(
-            md=('md', lambda x: x[x < x.quantile(self.quantile)].agg('mean')), 
-            md_std=('md', lambda x: x[x < x.quantile(self.quantile)].agg('std')),
-            md_na=('md_na', lambda x: x.sum() / len(x)),
+            da=('da', lambda x: x[x < x.quantile(self.quantile)].agg('mean')), 
+            da_std=('da', lambda x: x[x < x.quantile(self.quantile)].agg('std')),
+            da_na=('da_na', lambda x: x.sum() / len(x)),
         )
         self.grouped_preds = pd.merge(
             self.grouped_preds,
@@ -236,8 +239,8 @@ class DihedralAdherence():
             how='inner'
         )
         self.grouped_preds['target'] = self.casp_protein_id
-        self.grouped_preds_md = self.phi_psi_predictions.pivot(index='protein_id', columns='pos', values='md')
+        self.grouped_preds_da = self.phi_psi_predictions.pivot(index='protein_id', columns='pos', values='da')
 
     def filter_nas(self, quantile=0.9):
-        self.grouped_preds = self.grouped_preds[self.grouped_preds.md_na < self.grouped_preds.md_na.quantile(0.9)]
-        self.grouped_preds_md = self.grouped_preds_md.loc[self.grouped_preds.protein_id]
+        self.grouped_preds = self.grouped_preds[self.grouped_preds.da_na < self.grouped_preds.da_na.quantile(quantile)]
+        self.grouped_preds_da = self.grouped_preds_da.loc[self.grouped_preds.protein_id]
