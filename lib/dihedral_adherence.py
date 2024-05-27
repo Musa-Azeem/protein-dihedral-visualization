@@ -11,7 +11,6 @@ from lib.utils import get_seq_funcs, check_alignment
 from lib.modules import (
     get_phi_psi_xray,
     get_phi_psi_predictions,
-    query_and_process_pdbmine,
     seq_filter,
     get_da_for_all_predictions,
     fit_linregr
@@ -27,6 +26,7 @@ from lib.plotting import (
 from lib.constants import AMINO_ACID_CODES, AMINO_ACID_CODES_INV, AMINO_ACID_CODE_NAMES
 import pandas as pd
 import requests
+import math
 
 class DihedralAdherence():
     def __init__(self, casp_protein_id, winsizes, pdbmine_url, projects_dir='tests', kdews=None):
@@ -129,11 +129,13 @@ class DihedralAdherence():
         if self.xray_phi_psi is not None:
             self.get_results_metadata()
     
-    def compute_das(self, replace=True):
+    def compute_das(self, replace=True, da_scale=None):
         if self.xray_phi_psi is None or self.phi_psi_predictions is None:
             print('Run compute_structures() or load_results() first')
             return
-        get_da_for_all_predictions(self, replace)
+        if da_scale is None:
+            da_scale = [math.log2(i)+1 for i in self.kdews]
+        get_da_for_all_predictions(self, replace, da_scale)
         self._get_grouped_preds()
 
     def load_results(self):
