@@ -28,6 +28,8 @@ import pandas as pd
 import requests
 import math
 from Bio.PDB import PDBParser
+from lib.utils import compute_rmsd
+import warnings
 
 class DihedralAdherence():
     def __init__(self, casp_protein_id, winsizes, pdbmine_url, projects_dir='tests', kdews=None):
@@ -173,13 +175,49 @@ class DihedralAdherence():
     def fit_model(self):
         fit_linregr(self)
 
-    def split_and_compute_rmsd(self, pred_id=None, split=-1):
+    def compute_rmsd(self, pred_id=None, xray_start=None, xray_end=None, pred_start=None, pred_end=None):
+        if pred_id is None:
+            pred_id = self.protein_ids[0]
+        rmsd = compute_rmsd(
+            self.xray_fn, self.predictions_dir / pred_id, 
+            xray_start, xray_end, pred_start, pred_end)
+        print(f'RMSD={rmsd:.3f}')
+        return rmsd
+    
+    def split_and_compute_rmsd(self, pred_id=None, split=None, print_alignment=True):
         if pred_id is None:
             pred_id = self.protein_ids[0]
         
-        pdb_parser = PDBParser()
-        xray_structure = pdb_parser.get_structure(self.pdb_code, self.xray_fn)
-        pred_structure = pdb_parser.get_structure(pred_id, self.predictions_dir / pred_id)
+        if split is None:
+            rmsd = compute_rmsd(self.xray_fn, self.predictions_dir / pred_id, print_alignment)
+            print(f'RMSD={rmsd:.3f}')
+            return rmsd
+        else:
+            if not isinstance(split, list):
+                split = [split]
+            split = sorted(split)
+            rmsds = []
+            prev = 0
+            for s in split:
+                if s - prev < 2:
+                    prev = s + 1
+                    continue
+                rmsd = compute_rmsd(
+                    self.xray_fn, self.predictions_dir / pred_id,
+                    prev, s, prev, s,
+                    print_alignment
+                )
+                print(f'\nRMSD({prev}-{s})={rmsd:.3f}\n')
+                prev = s + 1
+                rmsds.append(rmsd)
+            rmsd = compute_rmsd(
+                self.xray_fn, self.predictions_dir / pred_id,
+                prev, None, prev, None
+            )
+            print(f'\nRMSD({prev}-end)={rmsd:.3f}\n')
+            rmsds.append(rmsd)
+            print(f'\nTotal RMSD={sum(rmsds):.3f}')
+            return rmsds
     
     def plot_one_dist(self, seq=None, pred_id=None, pred_name=None, axlims=None, bw_method=-1, fn=None):
         seq = seq or self.overlapping_seqs[0]

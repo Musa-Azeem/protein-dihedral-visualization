@@ -1,11 +1,13 @@
 from Bio import SeqIO
 import warnings
+from Bio.PDB import Superimposer, PDBParser
 from Bio.Align import PairwiseAligner
 from scipy.stats import gaussian_kde
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 import pandas as pd
 import numpy as np
+from lib.constants import AMINO_ACID_CODES
 
 def get_seq_funcs(winsize_ctxt):
     def get_center_idx():
@@ -14,10 +16,6 @@ def get_seq_funcs(winsize_ctxt):
         return -winsize_ctxt // 2
     def get_center(seq):
         return seq[get_center_idx()]
-        # if winsize_ctxt % 2 == 0:
-        #     return seq[winsize_ctxt // 2 - 1]
-        # else:
-        #     return seq[-winsize_ctxt // 2]
     def get_seq_ctxt(residues, i):
         if winsize_ctxt % 2 == 0:
             return residues[i-winsize_ctxt//2+1:i+winsize_ctxt//2+1]
@@ -84,3 +82,54 @@ def calc_da_for_one(kdepeak, phi_psi):
 
 def calc_da(kdepeak, phi_psi_preds):
     return np.sqrt(((phi_psi_preds[:,0] - kdepeak[0])**2) + ((phi_psi_preds[:,1] - kdepeak[1])**2))
+
+
+def compute_rmsd(fnA, fnB, startA=None, endA=None, startB=None, endB=None, print_alignment=True):
+    # Compute RMSD between two structures
+    pdb_parser = PDBParser()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        structureA = pdb_parser.get_structure('', fnA)
+        structureB = pdb_parser.get_structure('', fnB)
+    
+    chainA = next(iter(structureA[0].get_chains()))
+    chainB = next(iter(structureB[0].get_chains()))
+
+    startA = startA or 0
+    endA = endA or len(chainA)
+    startB = startB or 0
+    endB = endB or len(chainB)
+
+    if print_alignment:
+        residuesA = ''.join([AMINO_ACID_CODES.get(r.resname, 'X') for r in chainA.get_residues()])[startA:endA]
+        residuesB = ''.join([AMINO_ACID_CODES.get(r.resname, 'X') for r in chainB.get_residues()])[startB:endB]
+        aligner = PairwiseAligner()
+        aligner.mode = 'global'
+        alignments =  aligner.align(residuesA, residuesB)
+        print(alignments[0])
+
+    atomsA = []
+    atomsB = []
+    residuesA = list(chainA.get_residues())[startA:endA]
+    residuesB = list(chainB.get_residues())[startB:endB]
+    for i, (residueA, residueB) in enumerate(zip(residuesA, residuesB)):
+        if residueA.resname != residueB.resname:
+            print(f'WARNING: Residues {residueA.resname} and {residueB.resname} don\'t match at position: {i}')
+        try:
+            atomA = residueA['CA']
+            atomB = residueB['CA']
+        except KeyError:
+            print(f'WARNING: Atom "CA" missing at position: {i}')
+            continue
+        if atomB is None or atomA is None:
+            print(f'WARNING: Atom "CA" missing at position: {i}')
+            continue
+        atomsA.append(atomA)
+        atomsB.append(atomB)
+    atomsA, atomsB = np.array(atomsA), np.array(atomsB)
+
+    sup = Superimposer()
+    sup.set_atoms(atomsA, atomsB)
+    sup.apply(atomsA)
+
+    return sup.rms    
