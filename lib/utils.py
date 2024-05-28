@@ -100,32 +100,33 @@ def compute_rmsd(fnA, fnB, startA=None, endA=None, startB=None, endB=None, print
     startB = startB or 0
     endB = endB or len(chainB)
 
+    residuesA = ''.join([AMINO_ACID_CODES.get(r.resname, 'X') for r in chainA.get_residues()])[startA:endA]
+    residuesB = ''.join([AMINO_ACID_CODES.get(r.resname, 'X') for r in chainB.get_residues()])[startB:endB]
+    aligner = PairwiseAligner()
+    aligner.mode = 'global'
+    alignments =  aligner.align(residuesA, residuesB)
     if print_alignment:
-        residuesA = ''.join([AMINO_ACID_CODES.get(r.resname, 'X') for r in chainA.get_residues()])[startA:endA]
-        residuesB = ''.join([AMINO_ACID_CODES.get(r.resname, 'X') for r in chainB.get_residues()])[startB:endB]
-        aligner = PairwiseAligner()
-        aligner.mode = 'global'
-        alignments =  aligner.align(residuesA, residuesB)
         print(alignments[0])
 
     atomsA = []
     atomsB = []
     residuesA = list(chainA.get_residues())[startA:endA]
     residuesB = list(chainB.get_residues())[startB:endB]
-    for i, (residueA, residueB) in enumerate(zip(residuesA, residuesB)):
-        if residueA.resname != residueB.resname:
-            print(f'WARNING: Residues {residueA.resname} and {residueB.resname} don\'t match at position: {i}')
-        try:
-            atomA = residueA['CA']
-            atomB = residueB['CA']
-        except KeyError:
-            print(f'WARNING: Atom "CA" missing at position: {i}')
-            continue
-        if atomB is None or atomA is None:
-            print(f'WARNING: Atom "CA" missing at position: {i}')
-            continue
-        atomsA.append(atomA)
-        atomsB.append(atomB)
+    for i,((t1,t2),(q1,q2)) in enumerate(zip(*alignments[0].aligned)):
+        for j, (residueA, residueB) in enumerate(zip(residuesA[t1:t2], residuesB[q1:q2])):
+            if residueA.resname != residueB.resname:
+                print(f'WARNING: Residues {residueA.resname} and {residueB.resname} don\'t match at position: {j}')
+            try:
+                atomA = residueA['CA']
+                atomB = residueB['CA']
+            except KeyError:
+                print(f'WARNING: Atom "CA" missing at position: {i}')
+                continue
+            if atomB is None or atomA is None:
+                print(f'WARNING: Atom "CA" missing at position: {i}')
+                continue
+            atomsA.append(atomA)
+            atomsB.append(atomB)
     atomsA, atomsB = np.array(atomsA), np.array(atomsB)
 
     sup = Superimposer()

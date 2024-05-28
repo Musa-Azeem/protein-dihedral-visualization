@@ -185,6 +185,7 @@ class DihedralAdherence():
         return rmsd
     
     def split_and_compute_rmsd(self, pred_id=None, split=None, print_alignment=True):
+        # split should be int, tuple, list of ints or list of tuples
         if pred_id is None:
             pred_id = self.protein_ids[0]
         
@@ -197,26 +198,32 @@ class DihedralAdherence():
                 split = [split]
             split = sorted(split)
             rmsds = []
-            prev = 0
+            prev = (0,0)
             for s in split:
-                if s - prev < 2:
-                    prev = s + 1
+                if not isinstance(s, tuple):
+                    s = (s,s)
+                if s[0] - prev[0] < 2:
+                    prev = (s[0] + 1, s[1] + 1)
+                    continue
+                if s[1] - prev[1] < 2:
+                    prev = (s[0] + 1, s[1] + 1)
                     continue
                 rmsd = compute_rmsd(
                     self.xray_fn, self.predictions_dir / pred_id,
-                    prev, s, prev, s,
+                    prev[0], s[0], prev[1], s[1],
                     print_alignment
                 )
-                print(f'\nRMSD({prev}-{s})={rmsd:.3f}\n')
-                prev = s + 1
+                print(f'\nRMSD({prev[0]}-{s[0]})={rmsd:.3f}\n')
+                prev = (s[0] + 1, s[1] + 1)
                 rmsds.append(rmsd)
             rmsd = compute_rmsd(
                 self.xray_fn, self.predictions_dir / pred_id,
-                prev, None, prev, None
+                prev[0], None, prev[1], None
             )
-            print(f'\nRMSD({prev}-end)={rmsd:.3f}\n')
+            print(f'\nRMSD({prev[0]}-end)={rmsd:.3f}\n')
             rmsds.append(rmsd)
-            print(f'\nTotal RMSD={sum(rmsds):.3f}')
+            print(f'\nTotal RMSD = {"+".join([f"{r:.03f}" for r in rmsds])} = {sum(rmsds):.3f}')
+            print(f'Original RMSD={compute_rmsd(self.xray_fn, self.predictions_dir / pred_id, print_alignment=False):.3f}')
             return rmsds
     
     def plot_one_dist(self, seq=None, pred_id=None, pred_name=None, axlims=None, bw_method=-1, fn=None):
@@ -272,6 +279,9 @@ class DihedralAdherence():
             print('No DA data available. Run compute_das() or load_results_da() first')
             return
         plot_heatmap(self, fillna, fn)
+    
+    def get_id(self, group_id):
+        return f'{self.casp_protein_id}TS{group_id}'
 
     def _get_grouped_preds(self):
         self.phi_psi_predictions['da_na'] = self.phi_psi_predictions.da.isna()
