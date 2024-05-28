@@ -60,12 +60,14 @@ def get_da_for_all_predictions_(ins, da_scale, bw_method=None):
             ins.phi_psi_predictions.loc[ins.phi_psi_predictions.seq_ctxt == seq, 'da'] = da
     
     # scale da by number of samples
-    mean, std = ins.xray_phi_psi['n_samples'].describe()[['mean', 'std']]
-    # if n_samples < mean - std / 2, log scale by n_samples / (mean - std / 2)
+    mean, std = ins.phi_psi_predictions['n_samples'].describe()[['mean', 'std']]
+    # expected is mean-std/2, but at least 1
+    expected = max(1,mean - std / 2)
+    # if n_samples < expected, scale by n_samples / expected
     def scale(n_samples):
-        return min(1, n_samples / (mean - std / 2))
-    ins.xray_phi_psi['da_scaled'] = ins.xray_phi_psi['da'] * ins.xray_phi_psi['n_samples'].apply(scale)
-    ins.phi_psi_predictions['da_scaled'] = ins.phi_psi_predictions['da'] * ins.phi_psi_predictions['n_samples'].apply(scale)
+        return min(1, n_samples / expected)
+    ins.xray_phi_psi['da'] = ins.xray_phi_psi['da'] * ins.xray_phi_psi['n_samples'].apply(scale)
+    ins.phi_psi_predictions['da'] = ins.phi_psi_predictions['da'] * ins.phi_psi_predictions['n_samples'].apply(scale)
 
     ins.phi_psi_predictions.to_csv(ins.outdir / f'phi_psi_predictions_da.csv', index=False)
     ins.xray_phi_psi.to_csv(ins.outdir / f'xray_phi_psi_da.csv', index=False)

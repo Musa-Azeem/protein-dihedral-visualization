@@ -27,6 +27,7 @@ from lib.constants import AMINO_ACID_CODES, AMINO_ACID_CODES_INV, AMINO_ACID_COD
 import pandas as pd
 import requests
 import math
+from Bio.PDB import PDBParser
 
 class DihedralAdherence():
     def __init__(self, casp_protein_id, winsizes, pdbmine_url, projects_dir='tests', kdews=None):
@@ -46,7 +47,7 @@ class DihedralAdherence():
         if self.pdb_code == '':
             raise ValueError(f'No PDB code found for {casp_protein_id}')
         self.alphafold_id = f'{casp_protein_id}TS427_1'
-        print('PDB:', self.pdb_code)
+        print('Casp ID:', casp_protein_id, '\tPDB:', self.pdb_code)
 
         # Retrieve results and pdb files for xray and predictions
         self.results = retrieve_casp_results(casp_protein_id)
@@ -106,10 +107,10 @@ class DihedralAdherence():
             print('id =', pred_fn.stem)
         check_alignment(self.xray_fn, pred_fn)
 
-    def compute_structures(self):
+    def compute_structures(self, replace=False):
         # TODO: align pos column of predictions with xray_phi_psi using sequence alignment
-        self.xray_phi_psi = get_phi_psi_xray(self)
-        self.phi_psi_predictions = get_phi_psi_predictions(self)
+        self.xray_phi_psi = get_phi_psi_xray(self, replace)
+        self.phi_psi_predictions = get_phi_psi_predictions(self, replace)
         if self.queried:
             self.get_results_metadata()
         # filter
@@ -171,6 +172,14 @@ class DihedralAdherence():
     
     def fit_model(self):
         fit_linregr(self)
+
+    def split_and_compute_rmsd(self, pred_id=None, split=-1):
+        if pred_id is None:
+            pred_id = self.protein_ids[0]
+        
+        pdb_parser = PDBParser()
+        xray_structure = pdb_parser.get_structure(self.pdb_code, self.xray_fn)
+        pred_structure = pdb_parser.get_structure(pred_id, self.predictions_dir / pred_id)
     
     def plot_one_dist(self, seq=None, pred_id=None, pred_name=None, axlims=None, bw_method=-1, fn=None):
         seq = seq or self.overlapping_seqs[0]
@@ -220,7 +229,7 @@ class DihedralAdherence():
             print(f'Model R-squared: {self.model.rsquared:.6f}, Adj R-squared: {self.model.rsquared_adj:.6f}, p-value: {self.model.f_pvalue}')
         plot_da_vs_rmsd(self, axlims, fn)
     
-    def plot_heatmap(self, fillna=True, fn=None):
+    def plot_heatmap(self, fillna=False, fn=None):
         if not 'da' in self.phi_psi_predictions.columns:
             print('No DA data available. Run compute_das() or load_results_da() first')
             return

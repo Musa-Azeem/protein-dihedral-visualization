@@ -160,6 +160,16 @@ def plot_res_vs_da(ins, pred_id, pred_name, highlight_res, limit_quantile, legen
     pred = ins.phi_psi_predictions.loc[ins.phi_psi_predictions.protein_id == pred_id]
     both = pd.merge(pred, ins.xray_phi_psi[['seq_ctxt', 'da']].copy(), how='inner', on=['seq_ctxt','seq_ctxt'], suffixes=('_pred','_xray'))
     both['da_diff'] = both['da_pred'] - both['da_xray']
+    # Add na rows for missing residues
+    pos = np.arange(both.pos.min(), both.pos.max(), 1)
+    both = both.set_index('pos').reindex(pos).reset_index()
+
+    # Print highest values
+    print('Highest DA Differences:\n')
+    print(both.sort_values('da_diff', ascending=False).head(10)[
+        ['pos','seq_ctxt','da_pred','da_xray','da_diff']
+    ].to_markdown(index=False))
+
     if limit_quantile:
         both[both.da_pred > both.da_pred.quantile(limit_quantile)] = np.nan
         both[both.da_xray > both.da_xray.quantile(limit_quantile)] = np.nan
@@ -172,7 +182,6 @@ def plot_res_vs_da(ins, pred_id, pred_name, highlight_res, limit_quantile, legen
     axes[0].plot(both.pos, both.da_xray, label='X-Ray')
     axes[0].set_ylabel('')
     axes[0].legend(loc=legend_loc)
-    print(both.da_na.sum())
 
     # sns.lineplot(data=both, x='pos', y='da_diff', ax=axes[1], label=f'Difference:\n{pred_name} - Xray')
     axes[1].plot(both.pos, both.da_diff, label=f'Difference:\n{pred_name} - Xray')
@@ -251,7 +260,6 @@ def plot_heatmap(ins, fillna, fn):
     af_idx = df.index.get_loc(ins.alphafold_id)
     # print(ins.grouped_preds[ins.grouped_preds.protein_id == ins.alphafold_id])
     X = df.iloc[:, :-1].values
-    print(X.shape)
     X = np.where(np.isnan(X), np.nanmean(X,axis=0), X)
     if fillna:
         X[np.isnan(X)] = 0 # for entire column nan
