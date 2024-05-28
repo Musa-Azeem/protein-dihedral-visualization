@@ -41,7 +41,7 @@ def get_phi_psi_dist(queries, seq):
     for q in queries:
         inner_seq = q.get_subseq(seq)
         phi_psi_dist.append(q.results[q.results.seq == inner_seq][['phi', 'psi', 'weight']])
-        info.append((q.winsize, inner_seq, phi_psi_dist[-1].shape[0]))
+        info.append((q.winsize, inner_seq, phi_psi_dist[-1].shape[0], q.weight))
     return pd.concat(phi_psi_dist), info
 
 def check_alignment(xray_fn, pred_fn):

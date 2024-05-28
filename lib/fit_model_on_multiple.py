@@ -15,8 +15,8 @@ def fit_lr(protein_ids: list, winsizes, kdews, pdbmine_url, project_dir, n_comp=
     longest_protein = 0
     for protein_id in protein_ids:
         da = DihedralAdherence(protein_id, winsizes, pdbmine_url, project_dir, kdews=kdews)
-        da.compute_structures()
-        da.query_pdbmine()
+        # da.compute_structures()
+        # da.query_pdbmine()
         da.load_results()
         da.compute_das(replace=True)
         # da.load_results_da()

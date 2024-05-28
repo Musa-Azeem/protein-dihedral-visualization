@@ -166,12 +166,16 @@ def plot_res_vs_da(ins, pred_id, pred_name, highlight_res, limit_quantile, legen
         both[both.da_diff > both.da_diff.quantile(limit_quantile)] = np.nan
     
     fig, axes = plt.subplots(2, figsize=(10, 5), sharex=True)
-    sns.lineplot(data=both, x='pos', y='da_pred', ax=axes[0], label=pred_name)
-    sns.lineplot(data=both, x='pos', y='da_xray', ax=axes[0], label='X-Ray')
+    # sns.lineplot(data=both, x='pos', y='da_pred', ax=axes[0], label=pred_name)
+    # sns.lineplot(data=both, x='pos', y='da_xray', ax=axes[0], label='X-Ray')
+    axes[0].plot(both.pos, both.da_pred, label=pred_name)
+    axes[0].plot(both.pos, both.da_xray, label='X-Ray')
     axes[0].set_ylabel('')
     axes[0].legend(loc=legend_loc)
+    print(both.da_na.sum())
 
-    sns.lineplot(data=both, x='pos', y='da_diff', ax=axes[1], label=f'Difference:\n{pred_name} - Xray')
+    # sns.lineplot(data=both, x='pos', y='da_diff', ax=axes[1], label=f'Difference:\n{pred_name} - Xray')
+    axes[1].plot(both.pos, both.da_diff, label=f'Difference:\n{pred_name} - Xray')
     axes[1].fill_between(
         x=both.pos, 
         y1=both['da_diff'].mean() + both['da_diff'].std(), 
