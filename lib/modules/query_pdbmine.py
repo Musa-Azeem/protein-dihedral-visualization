@@ -7,35 +7,26 @@ from tqdm import tqdm
 import pandas as pd
 
 def query_and_process_pdbmine(ins):
-    if not Path(f'cache/{ins.casp_protein_id}/matches-{ins.winsize}').exists():
-        query_pdbmine(ins, ins.winsize)
-    if not Path(f'cache/{ins.casp_protein_id}/matches-{ins.winsize_ctxt}').exists():
-        query_pdbmine(ins, ins.winsize_ctxt)
+    if not ins.match_outdir.exists() or len(list(ins.match_outdir.iterdir())) == 0:
+        ins.match_outdir.mkdir(exist_ok=True, parents=True)
+        query_pdbmine(ins)
+    phi_psi_mined = get_phi_psi_mined(ins)
 
-    phi_psi_mined = get_phi_psi_mined(ins, ins.winsize, ins.kdews[0])
-    phi_psi_mined_ctxt = get_phi_psi_mined(ins, ins.winsize_ctxt, ins.kdews[1])
-
-    return phi_psi_mined, phi_psi_mined_ctxt
+    return phi_psi_mined
 
 # Get Phi-Psi distribution from PDBMine
-def query_pdbmine(ins, window_size):
-    print(f'Querying PDBMine - {window_size}')
-    record = next(iter(SeqIO.parse(ins.xray_fn, "pdb-seqres")))
-    residue_chain = str(record.seq)
-
+def query_pdbmine(ins):
+    print(f'Querying PDBMine - {ins.winsize}')
     code_length = 1
     broken_chains = []
 
     # break chain into sections of length 100 - for memory reasons
     # overlap by window_size-1
-    for i in range(0, len(residue_chain), 100-window_size+1):
-        broken_chains.append(residue_chain[i:i+100])
-
-    match_outdir = Path(f'cache/{ins.casp_protein_id}/matches-{window_size}')
-    match_outdir.mkdir(exist_ok=False, parents=True)
+    for i in range(0, len(ins.sequence), 100-ins.winsize+1):
+        broken_chains.append(ins.sequence[i:i+100])
 
     for i,chain in enumerate(tqdm(broken_chains)):
-        if len(chain) < window_size: # in case the last chain is too short
+        if len(chain) < ins.winsize: # in case the last chain is too short
             continue
 
         response = requests.post(
@@ -43,7 +34,7 @@ def query_pdbmine(ins, window_size):
             json={
                 "residueChain": chain,
                 "codeLength": code_length,
-                "windowSize": window_size
+                "windowSize": ins.winsize
             }
         )
         assert(response.ok)
@@ -61,12 +52,12 @@ def query_pdbmine(ins, window_size):
                 print('Waiting')
                 time.sleep(15)
         print(f'Received matches - {i}')
-        json.dump(matches, open(match_outdir / f'matches-win{window_size}_{i}.json', 'w'), indent=4)
+        json.dump(matches, open(ins.match_outdir / f'matches-win{ins.winsize}_{i}.json', 'w'), indent=4)
 
-def get_phi_psi_mined(ins, window_size, kdew):
+def get_phi_psi_mined(ins):
     seqs = []
     phi_psi_mined = []
-    for matches in Path(f'cache/{ins.casp_protein_id}/matches-{window_size}').iterdir():
+    for matches in ins.match_outdir.iterdir():
         matches = json.load(matches.open())
         for seq_win,v in matches.items():
             seq = seq_win[4:]
@@ -78,10 +69,9 @@ def get_phi_psi_mined(ins, window_size, kdew):
                 if protein_id.lower() == ins.pdb_code.lower(): # skip the protein we're looking at
                     continue
                 for seq_match in seq_matches:
-                    center_res = seq_match[window_size//2]
+                    center_res = seq_match[ins.get_center_idx()]
                     res, phi, psi = center_res.values()
                     phi_psi_mined.append([seq, res, phi, psi, chain, protein_id])
     phi_psi_mined = pd.DataFrame(phi_psi_mined, columns=['seq', 'res', 'phi', 'psi', 'chain', 'protein_id'])
-    phi_psi_mined['weight'] = kdew
-    phi_psi_mined.to_csv(ins.outdir / f'phi_psi_mined_win{window_size}.csv', index=False)
+    phi_psi_mined['weight'] = ins.weight
     return phi_psi_mined
