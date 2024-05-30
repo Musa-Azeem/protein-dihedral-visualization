@@ -224,8 +224,8 @@ def plot_da_vs_rmsd(ins, axlims, fn):
 
     sns.scatterplot(data=ins.grouped_preds, x='rms_pred', y='RMS_CA', ax=ax, marker='o', s=25, edgecolor='b', legend=True)
     ax.plot(
-        regr.intercept + regr.slope * np.linspace(0, ins.grouped_preds.rms_pred.max() + 5, 100), 
         np.linspace(0, ins.grouped_preds.rms_pred.max() + 5, 100), 
+        regr.intercept + regr.slope * np.linspace(0, ins.grouped_preds.rms_pred.max() + 5, 100), 
         color='red', lw=2, label='Regression Line'
     )
     # sns.regplot(data=ins.grouped_preds, x='rms_pred', y='RMS_CA', ax=ax, scatter=False, 
@@ -282,3 +282,38 @@ def plot_heatmap(ins, fillna, fn):
     if fn:
         plt.savefig(fn, bbox_inches='tight', dpi=300)
     plt.show()
+
+
+def plot_da_vs_rmsd_simple(ins, axlims, fn):
+    grouped_preds = ins.grouped_preds.dropna()
+    regr = linregress(grouped_preds.da, grouped_preds.RMS_CA)
+
+    sns.set_theme(style="whitegrid")
+    sns.set_palette("pastel")
+    fig, ax = plt.subplots(figsize=(8, 8))
+    print(regr.intercept, regr.slope)
+    sns.scatterplot(data=grouped_preds, x='da', y='RMS_CA', ax=ax, marker='o', s=25, edgecolor='b', legend=True)
+    ax.plot(
+        np.linspace(0, grouped_preds.da.max() + 5, 100), 
+        regr.intercept + regr.slope * np.linspace(0, grouped_preds.da.max() + 5, 100), 
+        color='red', lw=2, label='Regression Line'
+    )
+
+    ax.set_xlabel('Mean Dihedral Adherence Score', fontsize=14, labelpad=15)
+    ax.set_ylabel('Prediction Backbone RMSD', fontsize=14, labelpad=15)
+    ax.set_title(r'Mean Dihedral Adherence vs RMSD ($C_{\alpha}$) for each prediction', fontsize=16, pad=20)
+    ax.text(0.85, 0.10, r'$R^2$='+f'{regr.rvalue**2:.3f}', transform=ax.transAxes, fontsize=12,
+            verticalalignment='top', bbox=dict(boxstyle='round,pad=0.5', edgecolor='black', facecolor='white'))
+    
+    if axlims:
+        ax.set_xlim(axlims[0][0], axlims[0][1])
+        ax.set_ylim(axlims[1][0], axlims[1][1])
+
+    plt.legend(fontsize=12)
+    plt.tight_layout()
+
+    if fn:
+        plt.savefig(fn, bbox_inches='tight', dpi=300)
+    plt.show()
+
+    sns.reset_defaults()

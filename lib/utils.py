@@ -77,6 +77,13 @@ def find_kdepeak(phi_psi_dist, bw_method):
 
     return kdepeak
 
+# def calc_da_for_one(kdepeak, phi_psi):
+#     diff1 = (phi_psi[0] - kdepeak[0])**2
+#     diff1 = min(diff1, 360 - diff1)
+#     diff2 = min(phi_psi[1] - kdepeak[1], 360 - (phi_psi[1] - kdepeak[1])) 
+#     print(phi_psi[0] - kdepeak[0], diff1, phi_psi[1] - kdepeak[1], diff2)
+#     return np.sqrt((diff1)**2 + (diff2)**2)
+
 def calc_da_for_one(kdepeak, phi_psi):
     return np.sqrt((phi_psi[0] - kdepeak[0])**2 + (phi_psi[1] - kdepeak[1])**2)
 

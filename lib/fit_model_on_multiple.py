@@ -167,8 +167,8 @@ def plot_md_vs_rmsd(grouped_preds, axlims=None):
 
     sns.scatterplot(data=grouped_preds, x='rms_pred', y='RMS_CA', ax=ax, marker='o', s=25, edgecolor='b', legend=True, hue='target')
     ax.plot(
-        regr.intercept + regr.slope * np.linspace(0, grouped_preds.rms_pred.max(), 100), 
         np.linspace(0, grouped_preds.rms_pred.max(), 100), 
+        regr.intercept + regr.slope * np.linspace(0, grouped_preds.rms_pred.max(), 100), 
         color='red', lw=2, label='Regression Line')
     ax.set_xlabel('Regression-Aggregated Dihedral Adherence Score', fontsize=14, labelpad=15)
     ax.set_ylabel('Prediction Backbone RMSD', fontsize=14, labelpad=15)

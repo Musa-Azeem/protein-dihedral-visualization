@@ -21,7 +21,8 @@ from lib.plotting import (
     plot_da_for_seq,
     plot_res_vs_da,
     plot_da_vs_rmsd,
-    plot_heatmap
+    plot_heatmap,
+    plot_da_vs_rmsd_simple
 )
 from lib.constants import AMINO_ACID_CODES, AMINO_ACID_CODES_INV, AMINO_ACID_CODE_NAMES
 import pandas as pd
@@ -30,6 +31,7 @@ import math
 from Bio.PDB import PDBParser
 from lib.utils import compute_rmsd
 import warnings
+from scipy.stats import gmean, hmean
 
 class DihedralAdherence():
     def __init__(self, casp_protein_id, winsizes, pdbmine_url, projects_dir='tests', kdews=None):
@@ -274,6 +276,12 @@ class DihedralAdherence():
             print(f'Model R-squared: {self.model.rsquared:.6f}, Adj R-squared: {self.model.rsquared_adj:.6f}, p-value: {self.model.f_pvalue}')
         plot_da_vs_rmsd(self, axlims, fn)
     
+    def plot_da_vs_rmsd_simple(self, axlims=None, fn=None):
+        if not 'da' in self.phi_psi_predictions.columns:
+            print('No DA data available. Run compute_das() or load_results_da() first')
+            return
+        plot_da_vs_rmsd_simple(self, axlims, fn)
+    
     def plot_heatmap(self, fillna=False, fn=None):
         if not 'da' in self.phi_psi_predictions.columns:
             print('No DA data available. Run compute_das() or load_results_da() first')
@@ -282,11 +290,14 @@ class DihedralAdherence():
     
     def get_id(self, group_id):
         return f'{self.casp_protein_id}TS{group_id}'
-
     def _get_grouped_preds(self):
         self.phi_psi_predictions['da_na'] = self.phi_psi_predictions.da.isna()
+        def agg_da(x):
+            x = x[x < x.quantile(self.quantile)]
+            return x.agg('mean')
         self.grouped_preds = self.phi_psi_predictions.groupby('protein_id', as_index=False).agg(
-            da=('da', lambda x: x[x < x.quantile(self.quantile)].agg('mean')), 
+            # da=('da', lambda x: x[x < x.quantile(self.quantile)].agg('mean')), 
+            da=('da', agg_da), 
             da_std=('da', lambda x: x[x < x.quantile(self.quantile)].agg('std')),
             da_na=('da_na', lambda x: x.sum() / len(x)),
         )
