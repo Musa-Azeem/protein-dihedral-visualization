@@ -26,10 +26,16 @@ def get_subseq_func(winsize, winsize_ctxt):
     # Given the context sequence, find the subsequence of the given window size
     def get_subseq(seq):
         if winsize % 2 == 0:
-            return seq[winsize_ctxt//2 - winsize//2:winsize_ctxt//2 + winsize//2]
+            if winsize_ctxt % 2 == 0:
+                # even window size, even context size
+                return seq[winsize_ctxt//2 - winsize//2:winsize_ctxt//2 + winsize//2]
+            # even window size, odd context size
+            return seq[winsize_ctxt//2 - winsize//2 + 1:winsize_ctxt//2 + winsize//2 + 1]
         else:
             if winsize_ctxt % 2 == 0:
+                # odd window size, even context size
                 return seq[winsize_ctxt//2 - winsize//2-1:winsize_ctxt//2 + winsize//2]
+            # odd window size, odd context size
             return seq[winsize_ctxt//2 - winsize//2:winsize_ctxt//2 + winsize//2 + 1]
     return get_subseq
 
