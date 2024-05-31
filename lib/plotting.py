@@ -158,7 +158,11 @@ def plot_res_vs_da(ins, pred_id, pred_name, highlight_res, limit_quantile, legen
     # Plot xray vs prediction da for each residue of one prediction
     pred_name = pred_name or pred_id
     pred = ins.phi_psi_predictions.loc[ins.phi_psi_predictions.protein_id == pred_id]
-    both = pd.merge(pred, ins.xray_phi_psi[['pos', 'seq_ctxt', 'da']].copy(), how='inner', on=['seq_ctxt','seq_ctxt'], suffixes=('_pred','_xray'))
+    pred = pred.drop_duplicates(subset=['seq_ctxt']) # for plotting only
+    xray = ins.xray_phi_psi[['pos', 'seq_ctxt', 'da']]
+    xray = xray.drop_duplicates(subset=['seq_ctxt']) # for plotting only
+
+    both = pd.merge(pred, xray, how='inner', on=['seq_ctxt','seq_ctxt'], suffixes=('_pred','_xray'))
     both['da_diff'] = both['da_pred'] - both['da_xray']
     both = both.rename(columns={'pos_pred':'pos'})
     # Add na rows for missing residues
