@@ -5,7 +5,7 @@ import time
 import pandas as pd
 load_dotenv()
 
-PDBMINE_URL = os.getenv("PDBMINE_URL")
+PDBMINE_URL = os.getenv("GREEN_PDBMINE_URL")
 
 amino_acids = [
     "A",
