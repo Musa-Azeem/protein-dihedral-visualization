@@ -158,8 +158,23 @@ def plot_res_vs_da(ins, pred_id, pred_name, highlight_res, limit_quantile, legen
     # Plot xray vs prediction da for each residue of one prediction
     pred_name = pred_name or pred_id
     pred = ins.phi_psi_predictions.loc[ins.phi_psi_predictions.protein_id == pred_id]
-    both = pd.merge(pred, ins.xray_phi_psi[['seq_ctxt', 'da']].copy(), how='inner', on=['seq_ctxt','seq_ctxt'], suffixes=('_pred','_xray'))
+    pred = pred.drop_duplicates(subset=['seq_ctxt']) # for plotting only
+    xray = ins.xray_phi_psi[['pos', 'seq_ctxt', 'da']]
+    xray = xray.drop_duplicates(subset=['seq_ctxt']) # for plotting only
+
+    both = pd.merge(pred, xray, how='inner', on=['seq_ctxt','seq_ctxt'], suffixes=('_pred','_xray'))
     both['da_diff'] = both['da_pred'] - both['da_xray']
+    both = both.rename(columns={'pos_pred':'pos'})
+    # Add na rows for missing residues
+    pos = np.arange(both.pos.min(), both.pos.max(), 1)
+    both = both.set_index('pos').reindex(pos).reset_index()
+
+    # Print highest values
+    print('Highest DA Differences:\n')
+    print(both.sort_values('da_diff', ascending=False).head(10)[
+        ['pos', 'pos_xray', 'seq_ctxt','da_pred','da_xray','da_diff']
+    ].to_markdown(index=False))
+
     if limit_quantile:
         both[both.da_pred > both.da_pred.quantile(limit_quantile)] = np.nan
         both[both.da_xray > both.da_xray.quantile(limit_quantile)] = np.nan
@@ -172,7 +187,6 @@ def plot_res_vs_da(ins, pred_id, pred_name, highlight_res, limit_quantile, legen
     axes[0].plot(both.pos, both.da_xray, label='X-Ray')
     axes[0].set_ylabel('')
     axes[0].legend(loc=legend_loc)
-    print(both.da_na.sum())
 
     # sns.lineplot(data=both, x='pos', y='da_diff', ax=axes[1], label=f'Difference:\n{pred_name} - Xray')
     axes[1].plot(both.pos, both.da_diff, label=f'Difference:\n{pred_name} - Xray')
@@ -214,8 +228,8 @@ def plot_da_vs_rmsd(ins, axlims, fn):
 
     sns.scatterplot(data=ins.grouped_preds, x='rms_pred', y='RMS_CA', ax=ax, marker='o', s=25, edgecolor='b', legend=True)
     ax.plot(
-        regr.intercept + regr.slope * np.linspace(0, ins.grouped_preds.rms_pred.max() + 5, 100), 
         np.linspace(0, ins.grouped_preds.rms_pred.max() + 5, 100), 
+        regr.intercept + regr.slope * np.linspace(0, ins.grouped_preds.rms_pred.max() + 5, 100), 
         color='red', lw=2, label='Regression Line'
     )
     # sns.regplot(data=ins.grouped_preds, x='rms_pred', y='RMS_CA', ax=ax, scatter=False, 
@@ -251,7 +265,6 @@ def plot_heatmap(ins, fillna, fn):
     af_idx = df.index.get_loc(ins.alphafold_id)
     # print(ins.grouped_preds[ins.grouped_preds.protein_id == ins.alphafold_id])
     X = df.iloc[:, :-1].values
-    print(X.shape)
     X = np.where(np.isnan(X), np.nanmean(X,axis=0), X)
     if fillna:
         X[np.isnan(X)] = 0 # for entire column nan
@@ -273,3 +286,38 @@ def plot_heatmap(ins, fillna, fn):
     if fn:
         plt.savefig(fn, bbox_inches='tight', dpi=300)
     plt.show()
+
+
+def plot_da_vs_rmsd_simple(ins, axlims, fn):
+    grouped_preds = ins.grouped_preds.dropna()
+    regr = linregress(grouped_preds.da, grouped_preds.RMS_CA)
+
+    sns.set_theme(style="whitegrid")
+    sns.set_palette("pastel")
+    fig, ax = plt.subplots(figsize=(8, 8))
+    print(regr.intercept, regr.slope)
+    sns.scatterplot(data=grouped_preds, x='da', y='RMS_CA', ax=ax, marker='o', s=25, edgecolor='b', legend=True)
+    ax.plot(
+        np.linspace(0, grouped_preds.da.max() + 5, 100), 
+        regr.intercept + regr.slope * np.linspace(0, grouped_preds.da.max() + 5, 100), 
+        color='red', lw=2, label='Regression Line'
+    )
+
+    ax.set_xlabel('Mean Dihedral Adherence Score', fontsize=14, labelpad=15)
+    ax.set_ylabel('Prediction Backbone RMSD', fontsize=14, labelpad=15)
+    ax.set_title(r'Mean Dihedral Adherence vs RMSD ($C_{\alpha}$) for each prediction', fontsize=16, pad=20)
+    ax.text(0.85, 0.10, r'$R^2$='+f'{regr.rvalue**2:.3f}', transform=ax.transAxes, fontsize=12,
+            verticalalignment='top', bbox=dict(boxstyle='round,pad=0.5', edgecolor='black', facecolor='white'))
+    
+    if axlims:
+        ax.set_xlim(axlims[0][0], axlims[0][1])
+        ax.set_ylim(axlims[1][0], axlims[1][1])
+
+    plt.legend(fontsize=12)
+    plt.tight_layout()
+
+    if fn:
+        plt.savefig(fn, bbox_inches='tight', dpi=300)
+    plt.show()
+
+    sns.reset_defaults()

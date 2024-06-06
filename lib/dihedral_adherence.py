@@ -21,12 +21,17 @@ from lib.plotting import (
     plot_da_for_seq,
     plot_res_vs_da,
     plot_da_vs_rmsd,
-    plot_heatmap
+    plot_heatmap,
+    plot_da_vs_rmsd_simple
 )
 from lib.constants import AMINO_ACID_CODES, AMINO_ACID_CODES_INV, AMINO_ACID_CODE_NAMES
 import pandas as pd
 import requests
 import math
+from Bio.PDB import PDBParser
+from lib.utils import compute_rmsd
+import warnings
+from scipy.stats import gmean, hmean
 
 class DihedralAdherence():
     def __init__(self, casp_protein_id, winsizes, pdbmine_url, projects_dir='tests', kdews=None):
@@ -46,7 +51,7 @@ class DihedralAdherence():
         if self.pdb_code == '':
             raise ValueError(f'No PDB code found for {casp_protein_id}')
         self.alphafold_id = f'{casp_protein_id}TS427_1'
-        print('PDB:', self.pdb_code)
+        print('Casp ID:', casp_protein_id, '\tPDB:', self.pdb_code)
 
         # Retrieve results and pdb files for xray and predictions
         self.results = retrieve_casp_results(casp_protein_id)
@@ -106,10 +111,10 @@ class DihedralAdherence():
             print('id =', pred_fn.stem)
         check_alignment(self.xray_fn, pred_fn)
 
-    def compute_structures(self):
+    def compute_structures(self, replace=False):
         # TODO: align pos column of predictions with xray_phi_psi using sequence alignment
-        self.xray_phi_psi = get_phi_psi_xray(self)
-        self.phi_psi_predictions = get_phi_psi_predictions(self)
+        self.xray_phi_psi = get_phi_psi_xray(self, replace)
+        self.phi_psi_predictions = get_phi_psi_predictions(self, replace)
         if self.queried:
             self.get_results_metadata()
         # filter
@@ -171,6 +176,57 @@ class DihedralAdherence():
     
     def fit_model(self):
         fit_linregr(self)
+
+    def compute_rmsd(self, pred_id=None, xray_start=None, xray_end=None, pred_start=None, pred_end=None):
+        if pred_id is None:
+            pred_id = self.protein_ids[0]
+        rmsd = compute_rmsd(
+            self.xray_fn, self.predictions_dir / pred_id, 
+            xray_start, xray_end, pred_start, pred_end)
+        print(f'RMSD={rmsd:.3f}')
+        return rmsd
+    
+    def split_and_compute_rmsd(self, pred_id=None, split=None, print_alignment=True):
+        # split should be int, tuple, list of ints or list of tuples
+        if pred_id is None:
+            pred_id = self.protein_ids[0]
+        
+        if split is None:
+            rmsd = compute_rmsd(self.xray_fn, self.predictions_dir / pred_id, print_alignment)
+            print(f'RMSD={rmsd:.3f}')
+            return rmsd
+        else:
+            if not isinstance(split, list):
+                split = [split]
+            split = sorted(split)
+            rmsds = []
+            prev = (0,0)
+            for s in split:
+                if not isinstance(s, tuple):
+                    s = (s,s)
+                if s[0] - prev[0] < 2:
+                    prev = (s[0] + 1, s[1] + 1)
+                    continue
+                if s[1] - prev[1] < 2:
+                    prev = (s[0] + 1, s[1] + 1)
+                    continue
+                rmsd = compute_rmsd(
+                    self.xray_fn, self.predictions_dir / pred_id,
+                    prev[0], s[0], prev[1], s[1],
+                    print_alignment
+                )
+                print(f'\nRMSD({prev[0]}-{s[0]})={rmsd:.3f}\n')
+                prev = (s[0] + 1, s[1] + 1)
+                rmsds.append(rmsd)
+            rmsd = compute_rmsd(
+                self.xray_fn, self.predictions_dir / pred_id,
+                prev[0], None, prev[1], None
+            )
+            print(f'\nRMSD({prev[0]}-end)={rmsd:.3f}\n')
+            rmsds.append(rmsd)
+            print(f'\nTotal RMSD = {"+".join([f"{r:.03f}" for r in rmsds])} = {sum(rmsds):.3f}')
+            print(f'Original RMSD={compute_rmsd(self.xray_fn, self.predictions_dir / pred_id, print_alignment=False):.3f}')
+            return rmsds
     
     def plot_one_dist(self, seq=None, pred_id=None, pred_name=None, axlims=None, bw_method=-1, fn=None):
         seq = seq or self.overlapping_seqs[0]
@@ -220,16 +276,28 @@ class DihedralAdherence():
             print(f'Model R-squared: {self.model.rsquared:.6f}, Adj R-squared: {self.model.rsquared_adj:.6f}, p-value: {self.model.f_pvalue}')
         plot_da_vs_rmsd(self, axlims, fn)
     
-    def plot_heatmap(self, fillna=True, fn=None):
+    def plot_da_vs_rmsd_simple(self, axlims=None, fn=None):
+        if not 'da' in self.phi_psi_predictions.columns:
+            print('No DA data available. Run compute_das() or load_results_da() first')
+            return
+        plot_da_vs_rmsd_simple(self, axlims, fn)
+    
+    def plot_heatmap(self, fillna=False, fn=None):
         if not 'da' in self.phi_psi_predictions.columns:
             print('No DA data available. Run compute_das() or load_results_da() first')
             return
         plot_heatmap(self, fillna, fn)
-
+    
+    def get_id(self, group_id):
+        return f'{self.casp_protein_id}TS{group_id}'
     def _get_grouped_preds(self):
         self.phi_psi_predictions['da_na'] = self.phi_psi_predictions.da.isna()
+        def agg_da(x):
+            x = x[x < x.quantile(self.quantile)]
+            return x.agg('mean')
         self.grouped_preds = self.phi_psi_predictions.groupby('protein_id', as_index=False).agg(
-            da=('da', lambda x: x[x < x.quantile(self.quantile)].agg('mean')), 
+            # da=('da', lambda x: x[x < x.quantile(self.quantile)].agg('mean')), 
+            da=('da', agg_da), 
             da_std=('da', lambda x: x[x < x.quantile(self.quantile)].agg('std')),
             da_na=('da_na', lambda x: x.sum() / len(x)),
         )

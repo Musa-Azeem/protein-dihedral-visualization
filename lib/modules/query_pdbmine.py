@@ -45,7 +45,7 @@ def query_pdbmine(ins):
         time.sleep(60)
         while(True):
             response = requests.get(ins.pdbmine_url + f'/v1/api/query/{query_id}')
-            if response.ok:
+            if response.ok and response.json().get('frames'):
                 matches = response.json()['frames']
                 break
             else:

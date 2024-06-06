@@ -6,8 +6,8 @@ import warnings
 from tqdm import tqdm
 import pandas as pd
 
-def get_phi_psi_xray(ins):
-    if not (ins.outdir / 'xray_phi_psi.csv').exists():
+def get_phi_psi_xray(ins, replace):
+    if not (ins.outdir / 'xray_phi_psi.csv').exists() or replace:
         print('Computing phi-psi for xray')
         parser = PDBParser()
         xray_structure = parser.get_structure(ins.pdb_code, ins.xray_fn)
@@ -20,18 +20,20 @@ def get_phi_psi_xray(ins):
 
     return xray_phi_psi
 
-def get_phi_psi_predictions(ins):
-    if not (ins.outdir / 'phi_psi_predictions.csv').exists():
+def get_phi_psi_predictions(ins, replace):
+    if not (ins.outdir / 'phi_psi_predictions.csv').exists() or replace:
         print('Computing phi-psi for predictions')
         parser = PDBParser()
         phi_psi_predictions_ = []
-        for prediction_pdb in tqdm((ins.predictions_dir).iterdir()):
-                prediction = parser.get_structure(prediction_pdb.name, prediction_pdb)
-                try:
-                    chain = list(prediction[0].get_chains())[0]
-                    phi_psi_predictions_ += get_phi_psi_for_structure(ins, prediction, prediction.id)
-                except Exception as e:
-                    print(e)
+        for prediction_pdb in tqdm(ins.predictions_dir.iterdir()):
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    prediction = parser.get_structure(prediction_pdb.name, prediction_pdb)
+                    try:
+                        chain = list(prediction[0].get_chains())[0]
+                        phi_psi_predictions_ += get_phi_psi_for_structure(ins, prediction, prediction.id)
+                    except Exception as e:
+                        print(prediction_pdb.name, e)
 
         phi_psi_predictions = pd.DataFrame(phi_psi_predictions_, columns=['pos', 'seq_ctxt', 'res', 'phi', 'psi', 'protein_id'])
         phi_psi_predictions.to_csv(ins.outdir / 'phi_psi_predictions.csv', index=False)
@@ -46,7 +48,8 @@ def get_phi_psi_for_structure(ins, protein_structure, protein_id):
     if not resultDict['pass']:
         raise Exception('Failed to rebuild')
     # TODO if you index the chain object you get position in chain rather than index in list
-    residues = list(protein_structure.get_residues())
+    chain = next(iter((protein_structure[0].get_chains())))
+    residues = list(chain.get_residues())
     phi_psi_ = []
     for i in range(ins.winsize_ctxt//2, len(residues) - ins.winsize_ctxt // 2):
         # Convert 3 char codes to 1 char codes
