@@ -52,33 +52,36 @@ def query_pdbmine(seq):
     if not query_id:
         return None
     
-    time.sleep(2)
+    time.sleep(0.9)
     while(True):
         response = requests.get(PDBMINE_URL + f'/v1/api/query/{query_id}')
-        if response.ok:
+        if response.ok and 'frames' in response.json():
             matches = response.json()['frames']
             break
         else:
             print('waiting')
-            time.sleep(15)
+            time.sleep(.05)
     return matches
 
-results = []
-for length in [5]:
-    result = []
+for length in [4]:
+    with open(f'search/win{length}.csv', 'w') as f:
+        f.write('seq,n_matches\n')
+
     for i in range(n_aa**length):
         seq = get_amino_acid_seq(length,i)
+        #if i < 12:
+        #   print('skipping',seq) 
+        #   continue
         start = time.time()
         matches = query_pdbmine(seq)
         end = time.time()
         n_matches = 0
-        for seq,match in matches.items():
+        for key,match in matches.items():
             for protein, m in match.items():
                 n_matches += len(m)
-        result.append([seq, n_matches])
-        print(seq, n_matches, (start-end))
-        if i > 5:
-            break
-    result = pd.DataFrame(result, columns=['seq', 'n_matches'])
-    result.to_csv(f'search/win{length}.csv', index=False)
-    results.append(result)
+        print(seq, n_matches, f'{(end-start):03f}')
+        with open(f'search/win{length}.csv', 'a') as f:
+            f.write(f'{seq},{n_matches}\n')
+
+        if i % 1000 == 0:
+            os.system(f'cp search/win{length}.csv search/win{length}-backup.csv')
