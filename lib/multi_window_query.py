@@ -48,6 +48,9 @@ class MultiWindowQuery:
             if replace or not (self.outdir / f'phi_psi_mined_win{query.winsize}.csv').exists():
                 query.query_and_process_pdbmine()
                 query.results.to_csv(self.outdir / f'phi_psi_mined_win{query.winsize}.csv', index=False)
+            else:
+                query.results = pd.read_csv(self.outdir / f'phi_psi_mined_win{query.winsize}.csv')
+                query.results['weight'] = query.weight
         self.queried = True
 
     def load_results(self):

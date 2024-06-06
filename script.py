@@ -5,15 +5,23 @@ from dotenv import load_dotenv
 load_dotenv()
 import json
 
-WINDOW_SIZE = 5
-WINDOW_SIZE_CONTEXT = 6
 PDBMINE_URL = os.getenv("PDBMINE_URL")
-PROJECT_DIR = 'ml_data'
 winsizes = [4,5,6,7]
 
-# proteins = json.load(open('proteins.json'))
-# pdb_codes = proteins[:1000]
-pdb_codes = ['2lkf']
+# ids = ['T1024', 'T1096', 'T1027', 'T1082', 'T1091', 'T1058', 'T1049', 'T1030', 'T1056', 'T1038', 'T1025', 'T1028']
+# winsizes = [4,5,6,7]
+# PROJECT_DIR = 'tests'
+# for id in ids:
+#     da = DihedralAdherence(id, winsizes, PDBMINE_URL, PROJECT_DIR)
+#     outdir = Path('ml_data') / (da.pdb_code.upper() + '_' + da.outdir.name.split('_')[1])
+#     outdir.mkdir(exist_ok=True)
+#     os.system(f'cp {da.outdir}/xray_phi_psi.csv {outdir}/xray_phi_psi.csv')
+#     for winsize in winsizes:
+#         os.system(f'cp {da.outdir}/phi_psi_mined_win{winsize}.csv {outdir}/phi_psi_mined_win{winsize}.csv')
+
+PROJECT_DIR = 'ml_data'
+proteins = json.load(open('proteins.json'))
+pdb_codes = proteins[:1000]
 for pdb_code in pdb_codes:
     da = MultiWindowQuery(pdb_code, winsizes, PDBMINE_URL, PROJECT_DIR)
     try:
