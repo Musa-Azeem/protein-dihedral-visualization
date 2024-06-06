@@ -13,6 +13,6 @@ cache
 results*
 tests
 pkls
-__pycache__
+__pycache__/
 search
 ml_data
