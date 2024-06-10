@@ -17,9 +17,9 @@ def fit_lr(protein_ids: list, winsizes, kdews, pdbmine_url, project_dir, n_comp=
         da = DihedralAdherence(protein_id, winsizes, pdbmine_url, project_dir, kdews=kdews)
         # da.compute_structures()
         # da.query_pdbmine()
-        da.load_results()
-        da.compute_das(replace=True)
-        # da.load_results_da()
+        # da.load_results()
+        # da.compute_das(replace=True)
+        da.load_results_da()
         da.filter_nas()
         grouped_preds.append(da.grouped_preds.sort_values(['protein_id']))
         grouped_preds_da.append(da.grouped_preds_da.sort_values(['protein_id']))
@@ -165,7 +165,8 @@ def plot_md_vs_rmsd(grouped_preds, axlims=None):
     sns.set_palette("pastel")
     fig, ax = plt.subplots(figsize=(8, 8))
 
-    sns.scatterplot(data=grouped_preds, x='rms_pred', y='RMS_CA', ax=ax, marker='o', s=25, edgecolor='b', legend=True, hue='target')
+    # sns.scatterplot(data=grouped_preds, x='rms_pred', y='RMS_CA', ax=ax, marker='o', s=25, edgecolor='b', legend=True, hue='target')
+    sns.scatterplot(data=grouped_preds, x='rms_pred', y='RMS_CA', ax=ax, marker='o', s=25, edgecolor='b', legend=True)
     ax.plot(
         np.linspace(0, grouped_preds.rms_pred.max(), 100), 
         regr.intercept + regr.slope * np.linspace(0, grouped_preds.rms_pred.max(), 100), 

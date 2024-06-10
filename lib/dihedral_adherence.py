@@ -22,7 +22,8 @@ from lib.plotting import (
     plot_res_vs_da,
     plot_da_vs_rmsd,
     plot_heatmap,
-    plot_da_vs_rmsd_simple
+    plot_da_vs_rmsd_simple,
+    plot_res_vs_da_1plot
 )
 from lib.constants import AMINO_ACID_CODES, AMINO_ACID_CODES_INV, AMINO_ACID_CODE_NAMES
 import pandas as pd
@@ -125,10 +126,14 @@ class DihedralAdherence():
         print('PDBMine Connection:', response.status_code)
         return response.ok
 
-    def query_pdbmine(self):
+    def query_pdbmine(self, replace=False):
         for query in self.queries:
-            query.query_and_process_pdbmine()
-            query.results.to_csv(self.outdir / f'phi_psi_mined_win{query.winsize}.csv', index=False)
+            if replace or not (self.outdir / f'phi_psi_mined_win{query.winsize}.csv').exists():
+                query.query_and_process_pdbmine()
+                query.results.to_csv(self.outdir / f'phi_psi_mined_win{query.winsize}.csv', index=False)
+            else:
+                query.results = pd.read_csv(self.outdir / f'phi_psi_mined_win{query.winsize}.csv')
+                query.results['weight'] = query.weight
         self.queried = True
 
         if self.xray_phi_psi is not None:
@@ -258,13 +263,21 @@ class DihedralAdherence():
         pred_id = pred_id or self.protein_ids[0]
         plot_da_for_seq(self, seq, pred_id, pred_name, bw_method, axlims, fn, fill)
     
-    def plot_res_vs_da(self, pred_id=None, pred_name=None, highlight_res=None, limit_quantile=None, legend_loc='upper right', fn=None):
+    def plot_res_vs_da(self, pred_id=None, pred_name=None, highlight_res=None, limit_quantile=None, legend_loc='upper right', fn=None, text_loc='right'):
         highlight_res = highlight_res or []
         if not 'da' in self.phi_psi_predictions.columns:
             print('No DA data available. Run compute_das() or load_results_da() first')
             return
         protein_id = pred_id or self.protein_ids[0]
-        return plot_res_vs_da(self, protein_id, pred_name, highlight_res, limit_quantile, legend_loc, fn)
+        return plot_res_vs_da(self, protein_id, pred_name, highlight_res, limit_quantile, legend_loc, fn, text_loc)
+    
+    def plot_res_vs_da_1plot(self, pred_id=None, pred_name=None, highlight_res=None, limit_quantile=None, legend_loc='upper right', fn=None, text_loc='right'):
+        highlight_res = highlight_res or []
+        if not 'da' in self.phi_psi_predictions.columns:
+            print('No DA data available. Run compute_das() or load_results_da() first')
+            return
+        protein_id = pred_id or self.protein_ids[0]
+        return plot_res_vs_da_1plot(self, protein_id, pred_name, highlight_res, limit_quantile, legend_loc, fn, text_loc)
     
     def plot_da_vs_rmsd(self, axlims=None, fn=None):
         if not 'da' in self.phi_psi_predictions.columns:
@@ -294,7 +307,7 @@ class DihedralAdherence():
         self.phi_psi_predictions['da_na'] = self.phi_psi_predictions.da.isna()
         def agg_da(x):
             x = x[x < x.quantile(self.quantile)]
-            return x.agg('mean')
+            return x.agg('sum')
         self.grouped_preds = self.phi_psi_predictions.groupby('protein_id', as_index=False).agg(
             # da=('da', lambda x: x[x < x.quantile(self.quantile)].agg('mean')), 
             da=('da', agg_da), 

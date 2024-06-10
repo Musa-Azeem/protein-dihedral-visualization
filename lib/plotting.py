@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 from scipy.stats import gaussian_kde
 import matplotlib.patches as mpatches
+from matplotlib.ticker import FuncFormatter
 from scipy.stats import linregress
 from lib.utils import find_kdepeak, calc_da, calc_da_for_one, get_phi_psi_dist
 
@@ -65,18 +66,21 @@ def plot_one_dist_3d(ins, seq, bw_method, fn):
     print(f'Max: P({grid[0,z.argmax()]:02f}, {grid[1,z.argmax()]:02f})={z.max():02f}')
 
     cm = plt.get_cmap('turbo')
-    fig = plt.figure(figsize=(7,7))
+    fig = plt.figure(figsize=(10,5))
     ax = fig.add_subplot(111, projection='3d')
     surf = ax.plot_surface(x_grid, y_grid, z, cmap=cm)
-    ax.set_xlabel('Phi', fontsize=12, labelpad=10)
-    ax.set_ylabel('Psi', fontsize=12, labelpad=10)
-    ax.set_zlabel('Density', fontsize=12, labelpad=10)
-    ax.set_title(f'PDBMine Distribution of Dihedral Angles\nfor Residue {seq[ins.winsize_ctxt//2]} of Window {seq}', y=0.99, fontsize=14)
-    ax.dist = 12
-
-    ax.xaxis.set_tick_params(labelsize=10)
-    ax.yaxis.set_tick_params(labelsize=10)
-    ax.zaxis.set_tick_params(labelsize=10)
+    ax.zaxis.set_major_formatter(FuncFormatter(lambda x,pos:f'{x * 10e3:.1f}'))
+    
+    ax.set_title(f'PDBMine Distribution of Dihedral Angles\nfor Residue {seq[ins.winsize_ctxt//2]} of Window {seq}', y=0.99, fontsize=12)
+    ax.set_xlabel('Phi', fontsize=10, labelpad=10)
+    ax.set_ylabel('Psi', fontsize=10, labelpad=10)
+    ax.set_zlabel(r'Density $(10^{-3})$', fontsize=10, labelpad=10)
+    ax.xaxis.set_tick_params(labelsize=8)
+    ax.yaxis.set_tick_params(labelsize=8)
+    ax.zaxis.set_tick_params(labelsize=8)
+    ax.set_box_aspect(aspect=None, zoom=0.8)
+    # ax.dist = 5
+    plt.tight_layout()
 
     if fn:
         plt.savefig(fn, bbox_inches='tight', dpi=300)
@@ -154,7 +158,7 @@ def plot_da_for_seq(ins, seq, pred_id, pred_name, bw_method, axlims, fn, fill):
         plt.savefig(fn, bbox_inches='tight', dpi=300)
     plt.show()
 
-def plot_res_vs_da(ins, pred_id, pred_name, highlight_res, limit_quantile, legend_loc, fn):
+def plot_res_vs_da(ins, pred_id, pred_name, highlight_res, limit_quantile, legend_loc, fn, text_loc):
     # Plot xray vs prediction da for each residue of one prediction
     pred_name = pred_name or pred_id
     pred = ins.phi_psi_predictions.loc[ins.phi_psi_predictions.protein_id == pred_id]
@@ -202,17 +206,19 @@ def plot_res_vs_da(ins, pred_id, pred_name, highlight_res, limit_quantile, legen
     axes[1].set_xlabel('Residue Position in Chain', fontsize=12)
     axes[1].legend(loc=legend_loc)
 
-    fig.text(0.845, 1.70, f'Pred RMSD={ins.results.loc[ins.results.Model == pred_id, "RMS_CA"].values[0]:.02f}', 
+    xtext = 0.845 if text_loc == 'right' else 0.017
+    fig.text(xtext, 1.70, f'Pred RMSD={ins.results.loc[ins.results.Model == pred_id, "RMS_CA"].values[0]:.02f}', 
              transform=axes[1].transAxes, fontsize=10, verticalalignment='top', 
              bbox=dict(boxstyle='round,pad=0.5', edgecolor='black', facecolor='white'))
 
     fig.text(-0.02, 0.5, 'Dihedral Adherence of Residue', va='center', rotation='vertical', fontsize=12)
-    fig.suptitle('Dihedral Adherence for each Residue of the Protein 7W6B: Prediction vs X-Ray', fontsize=16)
-    plt.tight_layout()
+    fig.suptitle(f'Dihedral Adherence for each Residue of the Protein {ins.pdb_code}: Prediction vs X-Ray', fontsize=16)
 
     for highlight in highlight_res:
         for ax in axes:
             ax.axvspan(highlight[0], highlight[1], color='red', alpha=0.2)
+
+    plt.tight_layout()
     if fn:
         plt.savefig(fn, bbox_inches='tight', dpi=300)
     plt.show()
@@ -280,7 +286,7 @@ def plot_heatmap(ins, fillna, fn):
     cbar = ax.collections[0].colorbar
     cbar.set_label('Dihedral Adherence Magnitude', fontsize=10, labelpad=10)
     cbar.ax.tick_params(labelsize=10)
-    ax.set_title(f'Dihedral Adherence for each Residue of\nPredictions for the Protein {ins.casp_protein_id}', fontsize=12, pad=20)
+    ax.set_title(f'Dihedral Adherence for each Residue of\nPredictions for the Protein {ins.pdb_code}', fontsize=12, pad=20)
 
     plt.tight_layout()
     if fn:
@@ -290,6 +296,7 @@ def plot_heatmap(ins, fillna, fn):
 
 def plot_da_vs_rmsd_simple(ins, axlims, fn):
     grouped_preds = ins.grouped_preds.dropna()
+    # grouped_preds = grouped_preds[grouped_preds.da < 5000]
     regr = linregress(grouped_preds.da, grouped_preds.RMS_CA)
 
     sns.set_theme(style="whitegrid")
@@ -303,9 +310,9 @@ def plot_da_vs_rmsd_simple(ins, axlims, fn):
         color='red', lw=2, label='Regression Line'
     )
 
-    ax.set_xlabel('Mean Dihedral Adherence Score', fontsize=14, labelpad=15)
+    ax.set_xlabel('Total Dihedral Adherence Score', fontsize=14, labelpad=15)
     ax.set_ylabel('Prediction Backbone RMSD', fontsize=14, labelpad=15)
-    ax.set_title(r'Mean Dihedral Adherence vs RMSD ($C_{\alpha}$) for each prediction', fontsize=16, pad=20)
+    ax.set_title(r'Total Dihedral Adherence vs RMSD ($C_{\alpha}$) for Each Prediction of '+ins.pdb_code, fontsize=16, pad=20)
     ax.text(0.85, 0.10, r'$R^2$='+f'{regr.rvalue**2:.3f}', transform=ax.transAxes, fontsize=12,
             verticalalignment='top', bbox=dict(boxstyle='round,pad=0.5', edgecolor='black', facecolor='white'))
     
@@ -321,3 +328,63 @@ def plot_da_vs_rmsd_simple(ins, axlims, fn):
     plt.show()
 
     sns.reset_defaults()
+
+
+def plot_res_vs_da_1plot(ins, pred_id, pred_name, highlight_res, limit_quantile, legend_loc, fn, text_loc):
+    # Plot xray vs prediction da for each residue of one prediction
+    pred_name = pred_name or pred_id
+    pred = ins.phi_psi_predictions.loc[ins.phi_psi_predictions.protein_id == pred_id]
+    pred = pred.drop_duplicates(subset=['seq_ctxt']) # for plotting only
+    xray = ins.xray_phi_psi[['pos', 'seq_ctxt', 'da']]
+    xray = xray.drop_duplicates(subset=['seq_ctxt']) # for plotting only
+
+    both = pd.merge(pred, xray, how='inner', on=['seq_ctxt','seq_ctxt'], suffixes=('_pred','_xray'))
+    both['da_diff'] = both['da_pred'] - both['da_xray']
+    both = both.rename(columns={'pos_pred':'pos'})
+    # Add na rows for missing residues
+    pos = np.arange(both.pos.min(), both.pos.max(), 1)
+    both = both.set_index('pos').reindex(pos).reset_index()
+    both['da_diff'] = both['da_diff'].fillna(0)
+
+    # Print highest values
+    print('Highest DA Differences:\n')
+    print(both.sort_values('da_diff', ascending=False).head(10)[
+        ['pos', 'pos_xray', 'seq_ctxt','da_pred','da_xray','da_diff']
+    ].to_markdown(index=False))
+
+    if limit_quantile:
+        both[both.da_pred > both.da_pred.quantile(limit_quantile)] = np.nan
+        both[both.da_xray > both.da_xray.quantile(limit_quantile)] = np.nan
+        both[both.da_diff > both.da_diff.quantile(limit_quantile)] = np.nan
+    
+    fig, ax = plt.subplots(1, figsize=(10, 5), sharex=True)
+    ax.plot(both.pos, both.da_diff, label=f'Difference:\n{pred_name} - Xray')
+    ax.fill_between(
+        x=both.pos, 
+        y1=both['da_diff'].mean() + both['da_diff'].std(), 
+        y2=both['da_diff'].mean() - both['da_diff'].std(), 
+        color='tan', 
+        alpha=0.4
+    )
+    ax.hlines(both['da_diff'].mean(), xmin=both.pos.min(), xmax=both.pos.max(), color='tan', label='Mean Difference', linewidth=0.75)
+    ax.set_ylabel('Dihedral Adherence of Residue', fontsize=12)
+    ax.set_xlabel('Residue Position in Chain', fontsize=12)
+    ax.legend(loc=legend_loc)
+
+    xtext = 0.845 if text_loc == 'right' else 0.017
+    fig.text(xtext, .75, f'Pred RMSD={ins.results.loc[ins.results.Model == pred_id, "RMS_CA"].values[0]:.02f}', 
+             transform=ax.transAxes, fontsize=10, verticalalignment='top', 
+             bbox=dict(boxstyle='round,pad=0.5', edgecolor='black', facecolor='white'))
+
+
+    ax.set_title(f'Dihedral Adherence for each Residue of the Protein {ins.pdb_code}:\n Prediction - Xray', fontsize=16)
+
+    for highlight in highlight_res:
+        ax.axvspan(highlight[0], highlight[1], color='red', alpha=0.2)
+    plt.tight_layout()
+
+    if fn:
+        plt.savefig(fn, bbox_inches='tight', dpi=300)
+    plt.show()
+
+    return both
