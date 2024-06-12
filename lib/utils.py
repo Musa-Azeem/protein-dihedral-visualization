@@ -94,7 +94,7 @@ def calc_da(kdepeak, phi_psi_preds):
     return np.sqrt(diff(phi_psi_preds[:,0], kdepeak[0])**2 + diff(phi_psi_preds[:,1], kdepeak[1])**2)
 
 
-def compute_rmsd(fnA, fnB, startA=None, endA=None, startB=None, endB=None, print_alignment=True):
+def compute_rmsd(fnA, fnB, startA=None, endA=None, startB=None, endB=None, print_alignment=True, return_n=False):
     # Compute RMSD between two structures
     pdb_parser = PDBParser()
     with warnings.catch_warnings():
@@ -141,6 +141,10 @@ def compute_rmsd(fnA, fnB, startA=None, endA=None, startB=None, endB=None, print
 
     sup = Superimposer()
     sup.set_atoms(atomsA, atomsB)
-    sup.apply(atomsA)
-
-    return sup.rms    
+    sup.apply(atomsB)
+    if return_n:
+        atomsA = np.array([a.coord for a in atomsA])
+        atomsB = np.array([a.coord for a in atomsB])
+        dist = np.sum((atomsA - atomsB)**2)
+        return sup.rms, len(atomsA), dist
+    return sup.rms
