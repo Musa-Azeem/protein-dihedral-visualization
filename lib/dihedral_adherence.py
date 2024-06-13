@@ -205,6 +205,8 @@ class DihedralAdherence():
                 split = [split]
             split = sorted(split)
             rmsds = []
+            rmsd_inner = []
+            n = []
             prev = (0,0)
             for s in split:
                 if not isinstance(s, tuple):
@@ -215,23 +217,30 @@ class DihedralAdherence():
                 if s[1] - prev[1] < 2:
                     prev = (s[0] + 1, s[1] + 1)
                     continue
-                rmsd = compute_rmsd(
+                rmsd, ni, dist = compute_rmsd(
                     self.xray_fn, self.predictions_dir / pred_id,
                     prev[0], s[0], prev[1], s[1],
-                    print_alignment
+                    print_alignment, return_n=True
                 )
                 print(f'\nRMSD({prev[0]}-{s[0]})={rmsd:.3f}\n')
                 prev = (s[0] + 1, s[1] + 1)
                 rmsds.append(rmsd)
-            rmsd = compute_rmsd(
+                n.append(ni)
+                rmsd_inner.append(dist)
+            rmsd, ni, dist = compute_rmsd(
                 self.xray_fn, self.predictions_dir / pred_id,
-                prev[0], None, prev[1], None
+                prev[0], None, prev[1], None,
+                print_alignment, return_n=True
             )
             print(f'\nRMSD({prev[0]}-end)={rmsd:.3f}\n')
             rmsds.append(rmsd)
+            n.append(ni)
+            rmsd_inner.append(dist)
             print(f'\nTotal RMSD = {"+".join([f"{r:.03f}" for r in rmsds])} = {sum(rmsds):.3f}')
             print(f'Original RMSD={compute_rmsd(self.xray_fn, self.predictions_dir / pred_id, print_alignment=False):.3f}')
-            return rmsds
+            print(f'Computed Total RMSD: {np.sqrt((1/sum(n)) * sum(rmsd_inner))}')
+            print(f'Mean RMSD: {np.mean(rmsds):.3f}')
+            return rmsds, n, rmsd_inner
     
     def plot_one_dist(self, seq=None, pred_id=None, pred_name=None, axlims=None, bw_method=-1, fn=None):
         seq = seq or self.overlapping_seqs[0]
@@ -271,13 +280,13 @@ class DihedralAdherence():
         protein_id = pred_id or self.protein_ids[0]
         return plot_res_vs_da(self, protein_id, pred_name, highlight_res, limit_quantile, legend_loc, fn, text_loc)
     
-    def plot_res_vs_da_1plot(self, pred_id=None, pred_name=None, highlight_res=None, limit_quantile=None, legend_loc='upper right', fn=None, text_loc='right'):
+    def plot_res_vs_da_1plot(self, pred_id=None, pred_name=None, highlight_res=None, limit_quantile=None, legend_loc='upper right', fn=None, text_loc='right', rmsds=None):
         highlight_res = highlight_res or []
         if not 'da' in self.phi_psi_predictions.columns:
             print('No DA data available. Run compute_das() or load_results_da() first')
             return
         protein_id = pred_id or self.protein_ids[0]
-        return plot_res_vs_da_1plot(self, protein_id, pred_name, highlight_res, limit_quantile, legend_loc, fn, text_loc)
+        return plot_res_vs_da_1plot(self, protein_id, pred_name, highlight_res, limit_quantile, legend_loc, fn, text_loc, rmsds)
     
     def plot_da_vs_rmsd(self, axlims=None, fn=None):
         if not 'da' in self.phi_psi_predictions.columns:

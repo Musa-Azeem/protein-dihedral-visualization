@@ -136,7 +136,7 @@ def plot_da_for_seq(ins, seq, pred_id, pred_name, bw_method, axlims, fn, fill):
     ax.scatter(xray.iloc[0].phi, xray.iloc[0].psi, color=colors[1], marker='o', label='X-ray', zorder=10, s=100)
     ax.scatter(pred.phi, pred.psi,  color=colors[2], marker='o', label=pred_name, zorder=10, s=100)
     ax.scatter(alphafold.phi, alphafold.psi, color=colors[4], marker='o', label='AlphaFold', zorder=10, s=100)
-    ax.scatter(kdepeak.phi, kdepeak.psi, color='red', marker='x', label='KDE Peak')
+    ax.scatter(kdepeak.phi, kdepeak.psi, color='red', marker='X', label='KDE Peak', s=200, linewidths=0.1)
 
     # dotted line from each point to mean
     ax.plot([xray.phi.values[0], kdepeak.phi], [xray.psi.values[0], kdepeak.psi], linestyle='dashed', color=colors[1], zorder=1, linewidth=1)
@@ -296,13 +296,14 @@ def plot_heatmap(ins, fillna, fn):
 
 def plot_da_vs_rmsd_simple(ins, axlims, fn):
     grouped_preds = ins.grouped_preds.dropna()
+    grouped_preds = grouped_preds[grouped_preds.da < 5000]
     # grouped_preds = grouped_preds[grouped_preds.da < 5000]
     regr = linregress(grouped_preds.da, grouped_preds.RMS_CA)
+    print(regr.slope, regr.intercept)
 
     sns.set_theme(style="whitegrid")
     sns.set_palette("pastel")
-    fig, ax = plt.subplots(figsize=(8, 8))
-    print(regr.intercept, regr.slope)
+    fig, ax = plt.subplots(figsize=(8, 6.5))
     sns.scatterplot(data=grouped_preds, x='da', y='RMS_CA', ax=ax, marker='o', s=25, edgecolor='b', legend=True)
     ax.plot(
         np.linspace(0, grouped_preds.da.max() + 5, 100), 
@@ -312,10 +313,15 @@ def plot_da_vs_rmsd_simple(ins, axlims, fn):
 
     ax.set_xlabel('Total Dihedral Adherence Score', fontsize=14, labelpad=15)
     ax.set_ylabel('Prediction Backbone RMSD', fontsize=14, labelpad=15)
-    ax.set_title(r'Total Dihedral Adherence vs RMSD ($C_{\alpha}$) for Each Prediction of '+ins.pdb_code, fontsize=16, pad=20)
-    ax.text(0.85, 0.10, r'$R^2$='+f'{regr.rvalue**2:.3f}', transform=ax.transAxes, fontsize=12,
+    ax.set_title(r'RMSD ($C_{\alpha}$) vs Total Dihedral Adherence for Each Prediction of '+ins.pdb_code, fontsize=16, pad=20)
+    ax.text(0.83, 0.10, r'$R^2$='+f'{regr.rvalue**2:.3f}', transform=ax.transAxes, fontsize=14,
             verticalalignment='top', bbox=dict(boxstyle='round,pad=0.5', edgecolor='black', facecolor='white'))
-    
+    if regr.intercept > 0:
+        s = f'y = {regr.slope:.1E}x + {regr.intercept:.1f}'
+    else:
+        s = f'y = {regr.slope:.1E}x - {-regr.intercept:.1f}'
+    ax.text(.025,.86, s, transform=ax.transAxes, fontsize=12, color='red',
+            bbox=dict(boxstyle='round,pad=0.4', edgecolor='red', facecolor='white'))
     if axlims:
         ax.set_xlim(axlims[0][0], axlims[0][1])
         ax.set_ylim(axlims[1][0], axlims[1][1])
@@ -330,7 +336,7 @@ def plot_da_vs_rmsd_simple(ins, axlims, fn):
     sns.reset_defaults()
 
 
-def plot_res_vs_da_1plot(ins, pred_id, pred_name, highlight_res, limit_quantile, legend_loc, fn, text_loc):
+def plot_res_vs_da_1plot(ins, pred_id, pred_name, highlight_res, limit_quantile, legend_loc, fn, text_loc, rmsds):
     # Plot xray vs prediction da for each residue of one prediction
     pred_name = pred_name or pred_id
     pred = ins.phi_psi_predictions.loc[ins.phi_psi_predictions.protein_id == pred_id]
@@ -340,6 +346,8 @@ def plot_res_vs_da_1plot(ins, pred_id, pred_name, highlight_res, limit_quantile,
 
     both = pd.merge(pred, xray, how='inner', on=['seq_ctxt','seq_ctxt'], suffixes=('_pred','_xray'))
     both['da_diff'] = both['da_pred'] - both['da_xray']
+    both['da_diff'] = np.abs(both['da_diff'])
+    # both.loc[both.da_diff < 0, 'da_diff'] = 0
     both = both.rename(columns={'pos_pred':'pos'})
     # Add na rows for missing residues
     pos = np.arange(both.pos.min(), both.pos.max(), 1)
@@ -358,7 +366,7 @@ def plot_res_vs_da_1plot(ins, pred_id, pred_name, highlight_res, limit_quantile,
         both[both.da_diff > both.da_diff.quantile(limit_quantile)] = np.nan
     
     fig, ax = plt.subplots(1, figsize=(10, 5), sharex=True)
-    ax.plot(both.pos, both.da_diff, label=f'Difference:\n{pred_name} - Xray')
+    ax.plot(both.pos, both.da_diff, label=f'Difference:\n|{pred_name} - Xray|')
     ax.fill_between(
         x=both.pos, 
         y1=both['da_diff'].mean() + both['da_diff'].std(), 
@@ -371,13 +379,19 @@ def plot_res_vs_da_1plot(ins, pred_id, pred_name, highlight_res, limit_quantile,
     ax.set_xlabel('Residue Position in Chain', fontsize=12)
     ax.legend(loc=legend_loc)
 
-    xtext = 0.845 if text_loc == 'right' else 0.017
-    fig.text(xtext, .75, f'Pred RMSD={ins.results.loc[ins.results.Model == pred_id, "RMS_CA"].values[0]:.02f}', 
-             transform=ax.transAxes, fontsize=10, verticalalignment='top', 
+    xtext = 0.825 if text_loc == 'right' else 0.017
+    fig.text(xtext, .75, f'Total RMSD={ins.results.loc[ins.results.Model == pred_id, "RMS_CA"].values[0]:.02f}', 
+             transform=ax.transAxes, fontsize=12, verticalalignment='top', 
              bbox=dict(boxstyle='round,pad=0.5', edgecolor='black', facecolor='white'))
 
-
+    if rmsds:
+        for i,r in enumerate(rmsds):
+            fig.text(r[0], r[1], r'RMSD$_' + f'{i+1}' + r'$='+f'{r[2]:.02f}', transform=ax.transAxes, fontsize=10, verticalalignment='top', 
+                    bbox=dict(boxstyle='round,pad=0.5', edgecolor='black', facecolor='white'))
     ax.set_title(f'Dihedral Adherence for each Residue of the Protein {ins.pdb_code}:\n Prediction - Xray', fontsize=16)
+
+    ax.set_xlim(215, 390)
+    ax.set_ylim(-60, 150)
 
     for highlight in highlight_res:
         ax.axvspan(highlight[0], highlight[1], color='red', alpha=0.2)
