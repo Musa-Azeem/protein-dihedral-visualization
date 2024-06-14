@@ -1,4 +1,5 @@
 from lib import DihedralAdherence, MultiWindowQuery
+from lib.retrieve_data import retrieve_target_list
 import os
 import pandas as pd
 from dotenv import load_dotenv
@@ -7,7 +8,6 @@ import json
 
 PDBMINE_URL = os.getenv("PDBMINE_URL")
 winsizes = [4,5,6,7]
-
 # ids = ['T1024', 'T1096', 'T1027', 'T1082', 'T1091', 'T1058', 'T1049', 'T1030', 'T1056', 'T1038', 'T1025', 'T1028']
 # winsizes = [4,5,6,7]
 # PROJECT_DIR = 'tests'
@@ -18,6 +18,10 @@ winsizes = [4,5,6,7]
 #     os.system(f'cp {da.outdir}/xray_phi_psi.csv {outdir}/xray_phi_psi.csv')
 #     for winsize in winsizes:
 #         os.system(f'cp {da.outdir}/phi_psi_mined_win{winsize}.csv {outdir}/phi_psi_mined_win{winsize}.csv')
+
+ids = ['T1024', 'T1096', 'T1027', 'T1082', 'T1091', 'T1058', 'T1049', 'T1030', 'T1056', 'T1038', 'T1025', 'T1028']
+targetlist = retrieve_target_list()
+skip = [targetlist.loc[id, 'pdb_code'].upper() for id in ids]
 
 PROJECT_DIR = 'ml_data'
 proteins = json.load(open('proteins.json'))
