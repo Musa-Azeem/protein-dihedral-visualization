@@ -297,8 +297,6 @@ def plot_heatmap(ins, fillna, fn):
 
 def plot_da_vs_rmsd_simple(ins, axlims, fn):
     grouped_preds = ins.grouped_preds.dropna()
-    grouped_preds = grouped_preds[grouped_preds.da < 5000]
-    # grouped_preds = grouped_preds[grouped_preds.da < 5000]
     regr = linregress(grouped_preds.da, grouped_preds.RMS_CA)
     print(regr.slope, regr.intercept)
 

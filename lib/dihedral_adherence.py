@@ -13,7 +13,8 @@ from lib.modules import (
     get_phi_psi_predictions,
     seq_filter,
     get_da_for_all_predictions,
-    fit_linregr
+    fit_linregr,
+    get_da_for_all_predictions_ml
 )
 from lib.plotting import (
     plot_one_dist,
@@ -33,9 +34,10 @@ from Bio.PDB import PDBParser
 from lib.utils import compute_rmsd
 import warnings
 from scipy.stats import gmean, hmean
+from lib.ml.models import ModelWrapper
 
 class DihedralAdherence():
-    def __init__(self, casp_protein_id, winsizes, pdbmine_url, projects_dir='tests', kdews=None):
+    def __init__(self, casp_protein_id, winsizes, pdbmine_url, projects_dir='tests', kdews=None, ml_lengths=[4096, 512, 256, 256], weights_file='ml_data/best_model.pt', device='cpu'):
         self.casp_protein_id = casp_protein_id
         self.winsizes = winsizes
         self.winsize_ctxt = winsizes[-1]
@@ -83,6 +85,11 @@ class DihedralAdherence():
             ))
             self.queries[-1].set_get_subseq(self.winsize_ctxt)
         self.queried = False
+
+        self.ml_lengths = ml_lengths
+        self.weights_file = weights_file
+        self.model = ModelWrapper(self.ml_lengths, device)
+        self.model.load(self.weights_file)
 
     def get_sequence(self, start, end, code=1):
         if code == 1:
@@ -139,13 +146,16 @@ class DihedralAdherence():
         if self.xray_phi_psi is not None:
             self.get_results_metadata()
     
-    def compute_das(self, replace=True, da_scale=None):
+    def compute_das(self, replace=True, da_scale=None, mode='kde'):
         if self.xray_phi_psi is None or self.phi_psi_predictions is None:
             print('Run compute_structures() or load_results() first')
             return
         if da_scale is None:
             da_scale = [math.log2(i)+1 for i in self.kdews]
-        get_da_for_all_predictions(self, replace, da_scale)
+        if mode == 'kde':
+            get_da_for_all_predictions(self, replace, da_scale)
+        elif mode == 'ml':
+            get_da_for_all_predictions_ml(self, replace, da_scale)
         self._get_grouped_preds()
 
     def load_results(self):

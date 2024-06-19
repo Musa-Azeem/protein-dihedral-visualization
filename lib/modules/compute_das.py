@@ -77,15 +77,14 @@ def get_da_for_all_predictions_(ins, da_scale, bw_method=None):
 ############################## ML ######################################
 
 
-def get_da_for_all_predictions_ml(ins, replace, da_scale, bw_method=None):
+def get_da_for_all_predictions_ml(ins, replace, da_scale):
     if replace or not Path(ins.outdir / 'phi_psi_predictions_da_ml.csv').exists():
-        get_da_for_all_predictions_(ins, da_scale, bw_method)
+        get_da_for_all_predictions_ml_(ins, da_scale)
     else:
         ins.phi_psi_predictions = pd.read_csv(ins.outdir / 'phi_psi_predictions_da_ml.csv')
         ins.xray_phi_psi = pd.read_csv(ins.outdir / 'xray_phi_psi_da_ml.csv')
 
-def get_da_for_all_predictions_(ins, da_scale, bw_method=None):
-    bw_method = bw_method or ins.bw_method
+def get_da_for_all_predictions_ml_(ins, da_scale):
     ins.phi_psi_predictions['da'] = np.nan
     ins.phi_psi_predictions['n_samples'] = np.nan
     ins.xray_phi_psi['da'] = np.nan
@@ -110,7 +109,7 @@ def get_da_for_all_predictions_(ins, da_scale, bw_method=None):
             print(f'\tSkipping {seq} - not enough samples')
             continue # leave as nan
 
-        target = get_ml_pred(phi_psi_dist, bw_method)[['phi','psi']]
+        target = get_ml_pred(phi_psi_dist, ins.winsizes, ins.get_center(seq), ins.model)[['phi','psi']]
 
         # Distance to kde peak
         xray = ins.xray_phi_psi.loc[ins.xray_phi_psi.seq_ctxt == seq][['phi','psi']]

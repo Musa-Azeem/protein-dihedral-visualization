@@ -3,13 +3,15 @@ from torch import nn
 import torch.nn.functional as F
 
 class ModelWrapper():
-    def __init__(self, lengths):
-        self.model = LSTMNet(lengths)
+    def __init__(self, lengths, device):
+        self.model = LSTMNet(lengths).to(device)
         self.lengths = lengths
+        self.device = device
 
     def predict(self, X, xres):
         with torch.no_grad():
-            return self.model(X, xres)
+            X, xres = X.to(self.device), xres.to(self.device)
+            return self.model(X, xres).cpu()
     
     def __call__(self, X, xres):
         return self.predict(X, xres)
@@ -27,7 +29,7 @@ class LSTMNet(nn.Module):
         h = self.h
         nl = 1
         p_drop = 0.0
-        mlp_h = 20
+        mlp_h = 24
         self.lstm1 = nn.LSTM(2, h, nl, batch_first=True, bidirectional=True, dropout=p_drop)
         self.lstm2 = nn.LSTM(2, h, nl, batch_first=True, bidirectional=True, dropout=p_drop)
         self.lstm3 = nn.LSTM(2, h, nl, batch_first=True, bidirectional=True, dropout=p_drop)
