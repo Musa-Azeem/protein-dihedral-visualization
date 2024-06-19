@@ -90,6 +90,7 @@ def plot_da_for_seq(ins, seq, pred_id, pred_name, bw_method, axlims, fn, fill):
     pred_name = pred_name or pred_id[5:]
     bw_method = bw_method or ins.bw_method
     phi_psi_dist, info = get_phi_psi_dist(ins.queries, seq)
+    print(phi_psi_dist.describe())
     xray = ins.xray_phi_psi[ins.xray_phi_psi.seq_ctxt == seq]
     pred = ins.phi_psi_predictions[(ins.phi_psi_predictions.protein_id == pred_id) & (ins.phi_psi_predictions.seq_ctxt == seq)]
     preds = ins.phi_psi_predictions[ins.phi_psi_predictions.seq_ctxt == seq]
