@@ -8,6 +8,8 @@ from sklearn.metrics import silhouette_score
 import pandas as pd
 import numpy as np
 from lib.constants import AMINO_ACID_CODES
+from lib.ml.utils import get_ml_pred
+from pathlib import Path
 
 def get_seq_funcs(winsize_ctxt):
     def get_center_idx():
@@ -149,3 +151,17 @@ def compute_rmsd(fnA, fnB, startA=None, endA=None, startB=None, endB=None, print
         dist = np.sum((atomsA - atomsB)**2)
         return sup.rms, len(atomsA), dist
     return sup.rms
+
+def get_find_target(mode, winsizes, model):
+    xray_da_fn = 'xray_phi_psi_da.csv'
+    pred_da_fn = 'phi_psi_predictions_da.csv'
+    match(mode):
+        case 'kde':
+            def find_target_wrapper(phi_psi_dist, **kwargs):
+                return find_kdepeak(phi_psi_dist, kwargs['bw_method'])
+        case 'ml':
+            xray_da_fn = 'xray_phi_psi_da_ml.csv'
+            pred_da_fn = 'phi_psi_predictions_da_ml.csv'
+            def find_target_wrapper(phi_psi_dist, **kwargs):
+                return get_ml_pred(phi_psi_dist, winsizes, kwargs['res'], model)
+    return find_target_wrapper, Path(xray_da_fn), Path(pred_da_fn)

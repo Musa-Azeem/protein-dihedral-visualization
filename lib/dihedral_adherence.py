@@ -7,14 +7,13 @@ from lib.retrieve_data import (
     retrieve_casp_predictions, 
     retrieve_casp_results
 )
-from lib.utils import get_seq_funcs, check_alignment
+from lib.utils import get_seq_funcs, check_alignment, compute_rmsd, get_find_target
 from lib.modules import (
     get_phi_psi_xray,
     get_phi_psi_predictions,
     seq_filter,
     get_da_for_all_predictions,
     fit_linregr,
-    get_da_for_all_predictions_ml
 )
 from lib.plotting import (
     plot_one_dist,
@@ -31,13 +30,15 @@ import pandas as pd
 import requests
 import math
 from Bio.PDB import PDBParser
-from lib.utils import compute_rmsd
 import warnings
 from scipy.stats import gmean, hmean
-from lib.ml.models import ModelWrapper
+from lib.ml.models import MLPredictor
 
 class DihedralAdherence():
-    def __init__(self, casp_protein_id, winsizes, pdbmine_url, projects_dir='tests', kdews=None, ml_lengths=[4096, 512, 256, 256], weights_file='ml_data/best_model.pt', device='cpu'):
+    def __init__(
+            self, casp_protein_id, winsizes, pdbmine_url, projects_dir='tests', kdews=None, mode='kde',
+            model=None, ml_lengths=[4096, 512, 256, 256], weights_file='ml_data/best_model.pt', device='cpu'
+        ):
         self.casp_protein_id = casp_protein_id
         self.winsizes = winsizes
         self.winsize_ctxt = winsizes[-1]
@@ -86,10 +87,16 @@ class DihedralAdherence():
             self.queries[-1].set_get_subseq(self.winsize_ctxt)
         self.queried = False
 
-        self.ml_lengths = ml_lengths
-        self.weights_file = weights_file
-        self.model = ModelWrapper(self.ml_lengths, device)
-        self.model.load(self.weights_file)
+        self.mode = mode
+        if model is not None:
+            self.model = model
+        else:
+            self.model = MLPredictor(ml_lengths, device, weights_file)
+        if self.mode == 'ml':
+            self.model.load_weights()
+    
+        self.find_target, self.xray_da_fn, self.pred_da_fn = \
+            get_find_target(self.mode, self.winsizes, self.model)
 
     def get_sequence(self, start, end, code=1):
         if code == 1:
@@ -146,16 +153,14 @@ class DihedralAdherence():
         if self.xray_phi_psi is not None:
             self.get_results_metadata()
     
-    def compute_das(self, replace=True, da_scale=None, mode='kde'):
+    def compute_das(self, replace=True, da_scale=None):
         if self.xray_phi_psi is None or self.phi_psi_predictions is None:
             print('Run compute_structures() or load_results() first')
             return
         if da_scale is None:
             da_scale = [math.log2(i)+1 for i in self.kdews]
-        if mode == 'kde':
-            get_da_for_all_predictions(self, replace, da_scale)
-        elif mode == 'ml':
-            get_da_for_all_predictions_ml(self, replace, da_scale)
+        get_da_for_all_predictions(self, replace, da_scale)
+        # get_da_for_all_predictions_ml(self, replace, da_scale)
         self._get_grouped_preds()
 
     def load_results(self):
@@ -174,8 +179,8 @@ class DihedralAdherence():
                 print('WARNING: Weights used to calculate DA are different')
             query.results['weight'] = query.weight
         self.queried = True
-        self.xray_phi_psi = pd.read_csv(self.outdir / 'xray_phi_psi_da.csv')
-        self.phi_psi_predictions = pd.read_csv(self.outdir / 'phi_psi_predictions_da.csv')
+        self.xray_phi_psi = pd.read_csv(self.outdir / self.xray_da_fn)
+        self.phi_psi_predictions = pd.read_csv(self.outdir / self.pred_da_fn)
         self.get_results_metadata()
         self._get_grouped_preds()
 

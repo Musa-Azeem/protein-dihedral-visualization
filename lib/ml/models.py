@@ -2,11 +2,12 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
-class ModelWrapper():
-    def __init__(self, lengths, device):
+class MLPredictor():
+    def __init__(self, lengths, device, weights_file):
         self.model = LSTMNet(lengths).to(device)
         self.lengths = lengths
         self.device = device
+        self.weights_file = weights_file
 
     def predict(self, X, xres):
         with torch.no_grad():
@@ -16,8 +17,8 @@ class ModelWrapper():
     def __call__(self, X, xres):
         return self.predict(X, xres)
     
-    def load(self, weights_file):
-        self.model.load_state_dict(torch.load(weights_file))
+    def load_weights(self):
+        self.model.load_state_dict(torch.load(self.weights_file))
 
 class LSTMNet(nn.Module):
     def __init__(self, lengths):
