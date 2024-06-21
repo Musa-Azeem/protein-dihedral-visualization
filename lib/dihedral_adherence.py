@@ -96,7 +96,7 @@ class DihedralAdherence():
             self.model.load_weights()
     
         self.find_target, self.xray_da_fn, self.pred_da_fn = \
-            get_find_target(self.mode, self.winsizes, self.model)
+            get_find_target(self)
 
     def get_sequence(self, start, end, code=1):
         if code == 1:

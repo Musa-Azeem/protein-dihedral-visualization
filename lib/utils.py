@@ -86,6 +86,26 @@ def find_kdepeak(phi_psi_dist, bw_method):
 
     return kdepeak
 
+def find_kdepeak_af(phi_psi_dist, bw_method, af):
+    # Find probability of each point
+    if af.shape[0] == 0:
+        print('No AlphaFold prediction - Using ordinary KDE')
+        return find_kdepeak(phi_psi_dist, bw_method)
+    af = af[['phi', 'psi']].values[0]
+
+    phi_psi_dist = phi_psi_dist.loc[~phi_psi_dist[['phi', 'psi']].isna().any(axis=1)]
+    kernel = gaussian_kde(
+        phi_psi_dist[['phi','psi']].T, 
+        weights=phi_psi_dist['weight'], 
+        bw_method=bw_method
+    )
+    kdepeak = phi_psi_dist.iloc[kernel(phi_psi_dist[['phi', 'psi']].values.T).argmax()]
+
+    # Find second peak
+    # Choose peak that is closest to AlphaFold prediction
+
+    return kdepeak
+
 def calc_da_for_one(kdepeak, phi_psi):
     diff = lambda x1, x2: min(abs(x1 - x2), 360 - abs(x1 - x2))
     return np.sqrt(diff(phi_psi[0], kdepeak[0])**2 + diff(phi_psi[1], kdepeak[1])**2)
@@ -152,10 +172,10 @@ def compute_rmsd(fnA, fnB, startA=None, endA=None, startB=None, endB=None, print
         return sup.rms, len(atomsA), dist
     return sup.rms
 
-def get_find_target(mode, winsizes, model):
+def get_find_target(ins):
     xray_da_fn = 'xray_phi_psi_da.csv'
     pred_da_fn = 'phi_psi_predictions_da.csv'
-    match(mode):
+    match(ins.mode):
         case 'kde':
             def find_target_wrapper(phi_psi_dist, **kwargs):
                 return find_kdepeak(phi_psi_dist, kwargs['bw_method'])
@@ -163,5 +183,10 @@ def get_find_target(mode, winsizes, model):
             xray_da_fn = 'xray_phi_psi_da_ml.csv'
             pred_da_fn = 'phi_psi_predictions_da_ml.csv'
             def find_target_wrapper(phi_psi_dist, **kwargs):
-                return get_ml_pred(phi_psi_dist, winsizes, kwargs['res'], model)
+                return get_ml_pred(phi_psi_dist, ins.winsizes, kwargs['res'], ins.model)
+        case 'kde_af':
+            xray_da_fn = 'xray_phi_psi_da_af.csv'
+            pred_da_fn = 'phi_psi_predictions_da_af.csv'
+            def find_target_wrapper(phi_psi_dist, **kwargs):
+                return find_kdepeak_af(phi_psi_dist, kwargs['bw_method'], kwargs['af'])
     return find_target_wrapper, Path(xray_da_fn), Path(pred_da_fn)

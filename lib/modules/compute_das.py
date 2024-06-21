@@ -1,5 +1,5 @@
 import numpy as np
-from lib.utils import find_kdepeak, calc_da, get_phi_psi_dist
+from lib.utils import calc_da, get_phi_psi_dist
 from pathlib import Path
 import pandas as pd
 from numpy.linalg import LinAlgError
@@ -37,7 +37,7 @@ def get_da_for_all_predictions_(ins, da_scale, bw_method=None):
         if phi_psi_dist.shape[0] < 2:
             print(f'\tSkipping {seq} - not enough samples')
             continue # leave as nan
-
+        
         try:
             # kdepeak = find_kdepeak(phi_psi_dist, bw_method)[['phi','psi']]
             target = ins.find_target(phi_psi_dist, bw_method=bw_method, res=ins.get_center(seq))[['phi','psi']]

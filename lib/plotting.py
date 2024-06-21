@@ -6,7 +6,7 @@ from scipy.stats import gaussian_kde
 import matplotlib.patches as mpatches
 from matplotlib.ticker import FuncFormatter
 from scipy.stats import linregress
-from lib.utils import find_kdepeak, calc_da, calc_da_for_one, get_phi_psi_dist
+from lib.utils import calc_da, calc_da_for_one, get_phi_psi_dist
 
 colors = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple', 'tab:brown', 'tab:pink', 'tab:gray', 'tab:olive', 'tab:cyan']
 
@@ -28,14 +28,15 @@ def plot_one_dist(ins, seq, pred_id, pred_name, axlims, bw_method, fn):
     for i in info:
         print(f'Win {i[0]}: {i[1]} - {i[2]} samples')
 
-    kdepeak = find_kdepeak(phi_psi_dist, bw_method)
+    af = ins.phi_psi_predictions[(ins.phi_psi_predictions.protein_id == ins.alphafold_id) & (ins.phi_psi_predictions.seq_ctxt == seq)]
+    target = ins.find_target(phi_psi_dist, bw_method=bw_method, res=ins.get_center(seq), af=af)
 
     fig, ax = plt.subplots(figsize=(7,5))
     sns.kdeplot(data=phi_psi_dist, x='phi', y='psi', weights='weight', ax=ax, fill=True, color=colors[0], bw_method=bw_method)
     ax.scatter(xray_phi_psi_seq.phi, xray_phi_psi_seq.psi, marker='o', color=colors[1], label='X-ray', zorder=10)
     ax.scatter(phi_psi_pred.phi, phi_psi_pred.psi, marker='o', color=colors[2], label=f'{pred_name} Prediction', zorder=10)
     ax.scatter(phi_psi_alphafold.phi, phi_psi_alphafold.psi, marker='o', color=colors[4], label='AlphaFold', zorder=10)
-    ax.scatter(kdepeak.phi, kdepeak.psi, color='red', marker='x', label='KDE Peak', zorder=20)
+    ax.scatter(target.phi, target.psi, color='red', marker='x', label='KDE Peak', zorder=20)
     sns.scatterplot(data=preds, x='phi', y='psi', ax=ax, color='black', zorder=5, alpha=0.2, marker='.')
     ax.legend(loc='lower left')
 
@@ -112,15 +113,15 @@ def plot_da_for_seq(ins, seq, pred_id, pred_name, bw_method, axlims, fn, fill):
     for i in info:
         print(f'\tWin {i[0]}: {i[1]} - {i[2]} samples')
 
-    kdepeak = find_kdepeak(phi_psi_dist, bw_method)
+    target = ins.find_target(phi_psi_dist, bw_method=bw_method, res=ins.get_center(seq))
 
     # Mahalanobis distance to most common cluster
-    da_xray = calc_da_for_one(kdepeak[['phi', 'psi']].values, xray[['phi','psi']].values[0])
-    da_pred = calc_da_for_one(kdepeak[['phi', 'psi']].values, pred[['phi','psi']].values[0])
-    da_alphafold = calc_da_for_one(kdepeak[['phi', 'psi']].values, alphafold[['phi','psi']].values[0])
-    da_preds = calc_da(kdepeak[['phi', 'psi']].values, preds[['phi','psi']].values)
+    da_xray = calc_da_for_one(target[['phi', 'psi']].values, xray[['phi','psi']].values[0])
+    da_pred = calc_da_for_one(target[['phi', 'psi']].values, pred[['phi','psi']].values[0])
+    da_alphafold = calc_da_for_one(target[['phi', 'psi']].values, alphafold[['phi','psi']].values[0])
+    da_preds = calc_da(target[['phi', 'psi']].values, preds[['phi','psi']].values)
 
-    print(f'KDEpeak:\t ({kdepeak.phi:.02f}, {kdepeak.psi:.02f})')
+    print(f'Ideal:\t ({target.phi:.02f}, {target.psi:.02f})')
     print(f'X-ray[{pos}]:\t ({xray.phi.values[0]:.02f}, {xray.psi.values[0]:.02f}), DA={da_xray:.02f}')
     print(f'{pred_name}[{pred.pos.values[0]}]:\t ({pred.phi.values[0]:.02f}, {pred.psi.values[0]:.02f}), DA={da_pred:.02f}')
     print(f'AlphaFold[{alphafold.pos.values[0]}]:\t ({alphafold.phi.values[0]:.02f}, {alphafold.psi.values[0]:.02f}), DA={da_alphafold:.02f}')
@@ -137,12 +138,12 @@ def plot_da_for_seq(ins, seq, pred_id, pred_name, bw_method, axlims, fn, fill):
     ax.scatter(xray.iloc[0].phi, xray.iloc[0].psi, color=colors[1], marker='o', label='X-ray', zorder=10, s=100)
     ax.scatter(pred.phi, pred.psi,  color=colors[2], marker='o', label=pred_name, zorder=10, s=100)
     ax.scatter(alphafold.phi, alphafold.psi, color=colors[4], marker='o', label='AlphaFold', zorder=10, s=100)
-    ax.scatter(kdepeak.phi, kdepeak.psi, color='red', marker='X', label='KDE Peak', s=200, linewidths=0.1)
+    ax.scatter(target.phi, target.psi, color='red', marker='X', label='KDE Peak', s=200, linewidths=0.1)
 
     # dotted line from each point to mean
-    ax.plot([xray.phi.values[0], kdepeak.phi], [xray.psi.values[0], kdepeak.psi], linestyle='dashed', color=colors[1], zorder=1, linewidth=1)
-    ax.plot([pred.phi.values[0], kdepeak.phi], [pred.psi.values[0], kdepeak.psi], linestyle='dashed', color=colors[2], zorder=1, linewidth=1)
-    ax.plot([alphafold.phi.values[0], kdepeak.phi], [alphafold.psi.values[0], kdepeak.psi], linestyle='dashed', color=colors[4], zorder=1, linewidth=1)
+    ax.plot([xray.phi.values[0], target.phi], [xray.psi.values[0], target.psi], linestyle='dashed', color=colors[1], zorder=1, linewidth=1)
+    ax.plot([pred.phi.values[0], target.phi], [pred.psi.values[0], target.psi], linestyle='dashed', color=colors[2], zorder=1, linewidth=1)
+    ax.plot([alphafold.phi.values[0], target.phi], [alphafold.psi.values[0], target.psi], linestyle='dashed', color=colors[4], zorder=1, linewidth=1)
 
     ax.set_xlabel('Phi', fontsize=12)
     ax.set_ylabel('Psi', fontsize=12)
