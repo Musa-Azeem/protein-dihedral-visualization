@@ -28,8 +28,7 @@ def plot_one_dist(ins, seq, pred_id, pred_name, axlims, bw_method, fn):
     for i in info:
         print(f'Win {i[0]}: {i[1]} - {i[2]} samples')
 
-    af = ins.phi_psi_predictions[(ins.phi_psi_predictions.protein_id == ins.alphafold_id) & (ins.phi_psi_predictions.seq_ctxt == seq)]
-    target = ins.find_target(phi_psi_dist, bw_method=bw_method, res=ins.get_center(seq), af=af)
+    target = ins.find_target(phi_psi_dist, bw_method=bw_method)
 
     fig, ax = plt.subplots(figsize=(7,5))
     sns.kdeplot(data=phi_psi_dist, x='phi', y='psi', weights='weight', ax=ax, fill=True, color=colors[0], bw_method=bw_method)
@@ -113,7 +112,7 @@ def plot_da_for_seq(ins, seq, pred_id, pred_name, bw_method, axlims, fn, fill):
     for i in info:
         print(f'\tWin {i[0]}: {i[1]} - {i[2]} samples')
 
-    target = ins.find_target(phi_psi_dist, bw_method=bw_method, res=ins.get_center(seq))
+    target = ins.find_target(phi_psi_dist, bw_method=bw_method)
 
     # Mahalanobis distance to most common cluster
     da_xray = calc_da_for_one(target[['phi', 'psi']].values, xray[['phi','psi']].values[0])

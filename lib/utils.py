@@ -49,7 +49,9 @@ def get_phi_psi_dist(queries, seq):
         phi_psi_dist.append(q.results[q.results.seq == inner_seq][['phi', 'psi', 'weight']])
         phi_psi_dist[-1]['winsize'] = q.winsize
         info.append((q.winsize, inner_seq, phi_psi_dist[-1].shape[0], q.weight))
-    return pd.concat(phi_psi_dist), info
+    phi_psi_dist = pd.concat(phi_psi_dist)
+    phi_psi_dist['seq'] = seq
+    return phi_psi_dist, info
 
 def check_alignment(xray_fn, pred_fn):
     # Check alignment of casp prediction and x-ray structure
@@ -81,15 +83,17 @@ def find_kdepeak(phi_psi_dist, bw_method):
         weights=phi_psi_dist['weight'], 
         bw_method=bw_method
     )
-    kdepeak = phi_psi_dist.iloc[kernel(phi_psi_dist[['phi', 'psi']].values.T).argmax()]
-    # phi_psi_dist['prob'] = kernel(phi_psi_dist[['phi', 'psi']].values.T)
-
+    phi_grid, psi_grid = np.meshgrid(np.linspace(-180, 180, 360), np.linspace(-180, 180, 360))
+    grid = np.vstack([phi_grid.ravel(), psi_grid.ravel()])
+    kde = kernel(grid).reshape(phi_grid.shape)
+    kdepeak = grid[:,kde.argmax()]
+    kdepeak = pd.Series({'phi': kdepeak[0], 'psi': kdepeak[1]})
     return kdepeak
 
 def find_kdepeak_af(phi_psi_dist, bw_method, af):
     # Find probability of each point
     if af.shape[0] == 0:
-        print('No AlphaFold prediction - Using ordinary KDE')
+        print('\tNo AlphaFold prediction - Using ordinary KDE')
         return find_kdepeak(phi_psi_dist, bw_method)
     af = af[['phi', 'psi']].values[0]
 
@@ -175,18 +179,22 @@ def compute_rmsd(fnA, fnB, startA=None, endA=None, startB=None, endB=None, print
 def get_find_target(ins):
     xray_da_fn = 'xray_phi_psi_da.csv'
     pred_da_fn = 'phi_psi_predictions_da.csv'
+    # af = ins.phi_psi_predictions[(ins.phi_psi_predictions.protein_id == ins.alphafold_id) & (ins.phi_psi_predictions.seq_ctxt == seq)]
     match(ins.mode):
         case 'kde':
-            def find_target_wrapper(phi_psi_dist, **kwargs):
-                return find_kdepeak(phi_psi_dist, kwargs['bw_method'])
+            def find_target_wrapper(phi_psi_dist, bw_method):
+                return find_kdepeak(phi_psi_dist, bw_method)
         case 'ml':
             xray_da_fn = 'xray_phi_psi_da_ml.csv'
             pred_da_fn = 'phi_psi_predictions_da_ml.csv'
-            def find_target_wrapper(phi_psi_dist, **kwargs):
-                return get_ml_pred(phi_psi_dist, ins.winsizes, kwargs['res'], ins.model)
+            def find_target_wrapper(phi_psi_dist, bw_method):
+                res = ins.get_center(phi_psi_dist.seq.values[0])
+                return get_ml_pred(phi_psi_dist, ins.winsizes, res, ins.model)
         case 'kde_af':
             xray_da_fn = 'xray_phi_psi_da_af.csv'
             pred_da_fn = 'phi_psi_predictions_da_af.csv'
-            def find_target_wrapper(phi_psi_dist, **kwargs):
-                return find_kdepeak_af(phi_psi_dist, kwargs['bw_method'], kwargs['af'])
+            def find_target_wrapper(phi_psi_dist, bw_method):
+                seq = phi_psi_dist.seq.values[0]
+                af = ins.phi_psi_predictions[(ins.phi_psi_predictions.protein_id == ins.alphafold_id) & (ins.phi_psi_predictions.seq_ctxt == seq)]
+                return find_kdepeak_af(phi_psi_dist, bw_method, af)
     return find_target_wrapper, Path(xray_da_fn), Path(pred_da_fn)

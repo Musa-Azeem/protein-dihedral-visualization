@@ -39,8 +39,7 @@ def get_da_for_all_predictions_(ins, da_scale, bw_method=None):
             continue # leave as nan
         
         try:
-            # kdepeak = find_kdepeak(phi_psi_dist, bw_method)[['phi','psi']]
-            target = ins.find_target(phi_psi_dist, bw_method=bw_method, res=ins.get_center(seq))[['phi','psi']]
+            target = ins.find_target(phi_psi_dist, bw_method=bw_method)[['phi','psi']]
         except LinAlgError as e:
             print('\tSingular Matrix - skipping')
             continue # leave as nan
