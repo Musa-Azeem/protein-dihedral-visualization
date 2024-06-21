@@ -10,6 +10,7 @@ import numpy as np
 from lib.constants import AMINO_ACID_CODES
 from lib.ml.utils import get_ml_pred
 from pathlib import Path
+from sklearn.cluster import KMeans
 
 def get_seq_funcs(winsize_ctxt):
     def get_center_idx():
@@ -98,17 +99,28 @@ def find_kdepeak_af(phi_psi_dist, bw_method, af):
     af = af[['phi', 'psi']].values[0]
 
     phi_psi_dist = phi_psi_dist.loc[~phi_psi_dist[['phi', 'psi']].isna().any(axis=1)]
-    kernel = gaussian_kde(
-        phi_psi_dist[['phi','psi']].T, 
-        weights=phi_psi_dist['weight'], 
-        bw_method=bw_method
-    )
-    kdepeak = phi_psi_dist.iloc[kernel(phi_psi_dist[['phi', 'psi']].values.T).argmax()]
 
-    # Find second peak
+    # Find two clusters
+    kmeans = KMeans(n_clusters=2)
+    kmeans.fit(phi_psi_dist[['phi','psi']])
+    phi_psi_dist['cluster'] = kmeans.labels_
+
+    # find kdepeak for each cluster and entire dist
+    kdepeak = find_kdepeak(phi_psi_dist, bw_method)
+    kdepeak_c1 = find_kdepeak(phi_psi_dist[phi_psi_dist.cluster == 0], bw_method)
+    kdepeak_c2 = find_kdepeak(phi_psi_dist[phi_psi_dist.cluster == 1], bw_method)
+
     # Choose peak that is closest to AlphaFold prediction
+    targets = np.array([kdepeak.values, kdepeak_c1.values, kdepeak_c2.values])
+    dists = calc_da(af, targets)
+    if dists.argmin() == 0:
+        print('\tKDEPEAK: Using kdepeak of entire distribution')
+    else:
+        print(f'\tKDEPEAK: Using kdepeak of cluster')
+    target = targets[dists.argmin()]
+    target = pd.Series({'phi': target[0], 'psi': target[1]})
 
-    return kdepeak
+    return target
 
 def calc_da_for_one(kdepeak, phi_psi):
     diff = lambda x1, x2: min(abs(x1 - x2), 360 - abs(x1 - x2))

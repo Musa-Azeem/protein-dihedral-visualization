@@ -331,7 +331,7 @@ class DihedralAdherence():
         self.phi_psi_predictions['da_na'] = self.phi_psi_predictions.da.isna()
         def agg_da(x):
             x = x[x < x.quantile(self.quantile)]
-            return x.agg('sum')
+            return x.agg('mean')
         self.grouped_preds = self.phi_psi_predictions.groupby('protein_id', as_index=False).agg(
             # da=('da', lambda x: x[x < x.quantile(self.quantile)].agg('mean')), 
             da=('da', agg_da), 
