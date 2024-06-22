@@ -96,6 +96,7 @@ def find_kdepeak_af(phi_psi_dist, bw_method, af):
     if af.shape[0] == 0:
         print('\tNo AlphaFold prediction - Using ordinary KDE')
         return find_kdepeak(phi_psi_dist, bw_method)
+
     af = af[['phi', 'psi']].values[0]
 
     phi_psi_dist = phi_psi_dist.loc[~phi_psi_dist[['phi', 'psi']].isna().any(axis=1)]
@@ -105,6 +106,9 @@ def find_kdepeak_af(phi_psi_dist, bw_method, af):
     kmeans.fit(phi_psi_dist[['phi','psi']])
     phi_psi_dist['cluster'] = kmeans.labels_
 
+    if (phi_psi_dist.groupby('cluster').size() < 2).any():
+        print('\tOne cluster has less than 2 points - Using ordinary KDE')
+        return find_kdepeak(phi_psi_dist, bw_method)
     # find kdepeak for each cluster and entire dist
     kdepeak = find_kdepeak(phi_psi_dist, bw_method)
     kdepeak_c1 = find_kdepeak(phi_psi_dist[phi_psi_dist.cluster == 0], bw_method)
