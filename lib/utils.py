@@ -91,10 +91,13 @@ def find_kdepeak(phi_psi_dist, bw_method):
     kdepeak = pd.Series({'phi': kdepeak[0], 'psi': kdepeak[1]})
     return kdepeak
 
-def find_kdepeak_af(phi_psi_dist, bw_method, af):
+def find_kdepeak_af(phi_psi_dist, bw_method, af, return_peaks=False):
     # Find probability of each point
     if af.shape[0] == 0:
         print('\tNo AlphaFold prediction - Using ordinary KDE')
+        if return_peaks:
+            peak = find_kdepeak(phi_psi_dist, bw_method)
+            return peak, peak, None
         return find_kdepeak(phi_psi_dist, bw_method)
 
     af = af[['phi', 'psi']].values[0]
@@ -124,6 +127,8 @@ def find_kdepeak_af(phi_psi_dist, bw_method, af):
     target = targets[dists.argmin()]
     target = pd.Series({'phi': target[0], 'psi': target[1]})
 
+    if return_peaks:
+        return target, kdepeak, [kdepeak_c1, kdepeak_c2]
     return target
 
 def calc_da_for_one(kdepeak, phi_psi):

@@ -55,10 +55,12 @@ def get_da_for_all_predictions_(ins, da_scale, bw_method=None):
         preds = ins.phi_psi_predictions.loc[ins.phi_psi_predictions.seq_ctxt == seq][['phi','psi']]
         print(f'\t{preds.shape[0]} predictions')
         if preds.shape[0] == 0:
-            print(f'No predictions seq {seq}')
+            print(f'\tNo predictions seq {seq}')
         else:
             da = calc_da(target.values, preds.values)
             ins.phi_psi_predictions.loc[ins.phi_psi_predictions.seq_ctxt == seq, 'da'] = da
+        
+        print(f'\tXray DA: {da_xray}', f'Pred DA: {np.nanmean(da)}' if preds.shape[0] > 0 else '')
     
     # scale da by number of samples
     mean, std = ins.phi_psi_predictions['n_samples'].describe()[['mean', 'std']]
@@ -67,7 +69,9 @@ def get_da_for_all_predictions_(ins, da_scale, bw_method=None):
     # if n_samples < expected, scale by n_samples / expected
     def scale(n_samples):
         return min(1, n_samples / expected)
+    ins.xray_phi_psi['da_no_scale'] = ins.xray_phi_psi['da']
     ins.xray_phi_psi['da'] = ins.xray_phi_psi['da'] * ins.xray_phi_psi['n_samples'].apply(scale)
+    ins.phi_psi_predictions['da_no_scale'] = ins.phi_psi_predictions['da']
     ins.phi_psi_predictions['da'] = ins.phi_psi_predictions['da'] * ins.phi_psi_predictions['n_samples'].apply(scale)
 
     ins.phi_psi_predictions.to_csv(ins.outdir / ins.pred_da_fn, index=False)
