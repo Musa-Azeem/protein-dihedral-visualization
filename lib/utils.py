@@ -10,7 +10,7 @@ import numpy as np
 from lib.constants import AMINO_ACID_CODES
 from lib.ml.utils import get_ml_pred
 from pathlib import Path
-from sklearn.cluster import KMeans
+from sklearn.cluster import KMeans, MeanShift, estimate_bandwidth
 
 def get_seq_funcs(winsize_ctxt):
     def get_center_idx():
@@ -104,31 +104,48 @@ def find_kdepeak_af(phi_psi_dist, bw_method, af, return_peaks=False):
 
     phi_psi_dist = phi_psi_dist.loc[~phi_psi_dist[['phi', 'psi']].isna().any(axis=1)]
 
-    # Find two clusters
-    kmeans = KMeans(n_clusters=2)
-    kmeans.fit(phi_psi_dist[['phi','psi']])
-    phi_psi_dist['cluster'] = kmeans.labels_
+    # # Find two clusters
+    # kmeans = KMeans(n_clusters=2)
+    # kmeans.fit(phi_psi_dist[['phi','psi']])
+    # phi_psi_dist['cluster'] = kmeans.labels_
 
-    if (phi_psi_dist.groupby('cluster').size() < 2).any():
-        print('\tOne cluster has less than 2 points - Using ordinary KDE')
-        return find_kdepeak(phi_psi_dist, bw_method)
+    # Find clusters
+    # bandwidth = estimate_bandwidth(phi_psi_dist[['phi','psi']], n_samples=5000)
+    bandwidth = 100
+    ms = MeanShift(bandwidth=bandwidth, bin_seeding=True)
+    ms.fit(phi_psi_dist[['phi','psi']])
+    phi_psi_dist['cluster'] = ms.labels_
+
+    cluster_counts = phi_psi_dist.groupby('cluster').size()
+    phi_psi_dist['cluster'] = phi_psi_dist['cluster'].apply(lambda x: x if cluster_counts[x] > 4 else -1)
+    # if (phi_psi_dist.groupby('cluster').size() < 2).any():
+    #     print('\tOne cluster has less than 2 points - Using ordinary KDE')
+    #     return find_kdepeak(phi_psi_dist, bw_method)
+
     # find kdepeak for each cluster and entire dist
     kdepeak = find_kdepeak(phi_psi_dist, bw_method)
-    kdepeak_c1 = find_kdepeak(phi_psi_dist[phi_psi_dist.cluster == 0], bw_method)
-    kdepeak_c2 = find_kdepeak(phi_psi_dist[phi_psi_dist.cluster == 1], bw_method)
-
+    cluster_peaks = []
+    for i in phi_psi_dist.cluster.unique():
+        if i == -1:
+            continue
+        kdepeak_c = find_kdepeak(phi_psi_dist[phi_psi_dist.cluster == i], bw_method)
+        cluster_peaks.append(kdepeak_c)
+    # kdepeak_c1 = find_kdepeak(phi_psi_dist[phi_psi_dist.cluster == 0], bw_method)
+    # kdepeak_c2 = find_kdepeak(phi_psi_dist[phi_psi_dist.cluster == 1], bw_method)
+    print(f'\tFound {len(cluster_peaks)} Clusters')
     # Choose peak that is closest to AlphaFold prediction
-    targets = np.array([kdepeak.values, kdepeak_c1.values, kdepeak_c2.values])
+    targets = np.array([kdepeak.values] + [k.values for k in cluster_peaks])
     dists = calc_da(af, targets)
-    if dists.argmin() == 0:
+    argmin = dists.argmin()
+    if argmin == 0:
         print('\tKDEPEAK: Using kdepeak of entire distribution')
     else:
-        print(f'\tKDEPEAK: Using kdepeak of cluster')
-    target = targets[dists.argmin()]
+        print(f'\tKDEPEAK: Using kdepeak of cluster {argmin - 1}')
+    target = targets[argmin]
     target = pd.Series({'phi': target[0], 'psi': target[1]})
 
     if return_peaks:
-        return target, kdepeak, [kdepeak_c1, kdepeak_c2]
+        return target, kdepeak, cluster_peaks
     return target
 
 def calc_da_for_one(kdepeak, phi_psi):

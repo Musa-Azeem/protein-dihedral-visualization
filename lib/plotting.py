@@ -130,7 +130,7 @@ def plot_da_for_seq(ins, seq, pred_id, pred_name, bw_method, axlims, fn, fill):
     sns.kdeplot(
         data=phi_psi_dist, 
         x='phi', y='psi', weights='weight',
-        ax=ax, levels=8, zorder=0, 
+        ax=ax, zorder=0, 
         fill=fill, color='black'
     )
     ax.scatter(preds.phi, preds.psi, color='black', marker='o', s=5, alpha=0.2, label='All Other CASP-14 Predictions', zorder=1)

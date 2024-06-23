@@ -12,8 +12,7 @@ load_dotenv()
 PDBMINE_URL = os.getenv("PDBMINE_URL")
 PROJECT_DIR = 'tests'
 
-# for casp_id in ['T1091', 'T1058', 'T1049', 'T1030', 'T1056', 'T1038', 'T1025', 'T1028']:
-for casp_id in ['T1049']:
+for casp_id in ['T1024', 'T1096', 'T1027', 'T1082', 'T1091', 'T1058', 'T1049', 'T1030', 'T1056', 'T1038', 'T1025', 'T1028']:
     try:
         da = DihedralAdherence(casp_id, [4,5,6,7], PDBMINE_URL, PROJECT_DIR, kdews=[1,32,64,128], mode='kde_af')
         da.load_results()
