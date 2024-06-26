@@ -12,12 +12,14 @@ def get_da_for_all_predictions(ins, replace, da_scale, bw_method=None):
         ins.phi_psi_predictions = pd.read_csv(ins.outdir / ins.pred_da_fn)
         ins.xray_phi_psi = pd.read_csv(ins.outdir / ins.xray_da_fn)
 
-def get_da_for_all_predictions_(ins, da_scale, bw_method=None):
+def get_da_for_all_predictions_(ins, da_scale, scale_das=True, bw_method=None):
     bw_method = bw_method or ins.bw_method
     ins.phi_psi_predictions['da'] = np.nan
     ins.phi_psi_predictions['n_samples'] = np.nan
+    ins.phi_psi_predictions['n_samples_list'] = ''
     ins.xray_phi_psi['da'] = np.nan
     ins.xray_phi_psi['n_samples'] = np.nan
+    ins.xray_phi_psi['n_samples_list'] = ''
     for i,seq in enumerate(ins.xray_phi_psi.seq_ctxt.unique()):
         print(f'{i}/{len(ins.xray_phi_psi.seq_ctxt.unique())-1}: {seq}')
         if 'X' in seq:
@@ -31,7 +33,9 @@ def get_da_for_all_predictions_(ins, da_scale, bw_method=None):
         # Calculate number of samples weighted by kdeweight
         weighted_n_samples = sum([i[2]*w for i,w in zip(info, da_scale)])
         ins.xray_phi_psi.loc[ins.xray_phi_psi.seq_ctxt == seq, 'n_samples'] = weighted_n_samples
+        ins.xray_phi_psi.loc[ins.xray_phi_psi.seq_ctxt == seq, 'n_samples_list'] = str([i[2] for i in info])
         ins.phi_psi_predictions.loc[ins.phi_psi_predictions.seq_ctxt == seq, 'n_samples'] = weighted_n_samples
+        ins.phi_psi_predictions.loc[ins.phi_psi_predictions.seq_ctxt == seq, 'n_samples_list'] = str([i[2] for i in info])
         print(f'\tWeighted n samples: {weighted_n_samples}')
 
         if phi_psi_dist.shape[0] < 2:
@@ -70,9 +74,10 @@ def get_da_for_all_predictions_(ins, da_scale, bw_method=None):
     def scale(n_samples):
         return min(1, n_samples / expected)
     ins.xray_phi_psi['da_no_scale'] = ins.xray_phi_psi['da']
-    ins.xray_phi_psi['da'] = ins.xray_phi_psi['da'] * ins.xray_phi_psi['n_samples'].apply(scale)
     ins.phi_psi_predictions['da_no_scale'] = ins.phi_psi_predictions['da']
-    ins.phi_psi_predictions['da'] = ins.phi_psi_predictions['da'] * ins.phi_psi_predictions['n_samples'].apply(scale)
+    if scale_das:
+        ins.xray_phi_psi['da'] = ins.xray_phi_psi['da'] * ins.xray_phi_psi['n_samples'].apply(scale)
+        ins.phi_psi_predictions['da'] = ins.phi_psi_predictions['da'] * ins.phi_psi_predictions['n_samples'].apply(scale)
 
     ins.phi_psi_predictions.to_csv(ins.outdir / ins.pred_da_fn, index=False)
     ins.xray_phi_psi.to_csv(ins.outdir / ins.xray_da_fn, index=False)

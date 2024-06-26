@@ -21,3 +21,4 @@ class PDBMineQuery():
         self.get_subseq = get_subseq_func(self.winsize, winsize_ctxt)
     def query_and_process_pdbmine(self):
         self.results = query_and_process_pdbmine(self)
+        self.results = self.results[(self.results.phi <= 180) & (self.results.psi <= 180)]

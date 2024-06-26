@@ -71,6 +71,8 @@ def get_phi_psi_mined(ins):
                 for seq_match in seq_matches:
                     center_res = seq_match[ins.get_center_idx()]
                     res, phi, psi = center_res.values()
+                    # if phi > 180 or psi > 180:
+                        # continue
                     phi_psi_mined.append([seq, res, phi, psi, chain, protein_id])
     phi_psi_mined = pd.DataFrame(phi_psi_mined, columns=['seq', 'res', 'phi', 'psi', 'chain', 'protein_id'])
     phi_psi_mined['weight'] = ins.weight

@@ -75,7 +75,7 @@ def check_alignment(xray_fn, pred_fn):
             if t2-t1 > 5:
                 print(f'Match of length: {t2-t1} residues at position t={t1}, q={q1}')
 
-def find_kdepeak(phi_psi_dist, bw_method):
+def find_kdepeak(phi_psi_dist, bw_method, return_prob=False):
     # Find probability of each point
     phi_psi_dist = phi_psi_dist.loc[~phi_psi_dist[['phi', 'psi']].isna().any(axis=1)]
 
@@ -89,6 +89,9 @@ def find_kdepeak(phi_psi_dist, bw_method):
     kde = kernel(grid).reshape(phi_grid.shape)
     kdepeak = grid[:,kde.argmax()]
     kdepeak = pd.Series({'phi': kdepeak[0], 'psi': kdepeak[1]})
+
+    if return_prob:
+        return kdepeak, kde.max()
     return kdepeak
 
 def find_kdepeak_af(phi_psi_dist, bw_method, af, return_peaks=False):

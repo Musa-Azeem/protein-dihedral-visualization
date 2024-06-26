@@ -39,6 +39,7 @@ class DihedralAdherence():
             self, casp_protein_id, winsizes, pdbmine_url, projects_dir='tests', kdews=None, mode='kde',
             model=None, ml_lengths=[4096, 512, 256, 256], weights_file='ml_data/best_model.pt', device='cpu'
         ):
+        print(f'Initializing {casp_protein_id} ...')
         self.casp_protein_id = casp_protein_id
         self.winsizes = winsizes
         self.winsize_ctxt = winsizes[-1]
