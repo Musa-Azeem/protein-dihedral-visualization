@@ -77,7 +77,7 @@ def get_kdepeak(x, af):
         x4 = x4[:,~np.isnan(x4).any(axis=0)]
         w4 = np.full(x4.shape[1], kdews[3])
 
-        afi = af.iloc[i]
+        afi = af.loc[af.index == i]
 
         x = np.concatenate([x1,x2,x3,x4], axis=1)
         w = np.concatenate([w1,w2,w3,w4])
@@ -88,8 +88,10 @@ def get_kdepeak(x, af):
             kdes.append(np.full(2, np.nan))
             continue
         try:
-            kdepeak = find_kdepeak_af(phi_psi_dist, None, afi).values[0]
-        except:
+            kdepeak = find_kdepeak_af(phi_psi_dist, None, afi).values
+            print('KDEPEAK', kdepeak)
+        except Exception as e:
+            print(e)
             kdes.append(np.full(2, np.nan))
             continue
         kdes.append(kdepeak)

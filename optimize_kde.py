@@ -15,6 +15,8 @@ from torch.utils.data import DataLoader, Dataset, ConcatDataset
 from sklearn.model_selection import train_test_split
 from matplotlib.ticker import FuncFormatter
 from tqdm import tqdm
+from scipy.linalg import cholesky
+from scipy.linalg import solve_triangular
 
 class ProteinDataset(Dataset):
     def __init__(self, id, path):
@@ -44,36 +46,80 @@ torch.save((train, test), 'ml_data/split.pt')
 # train, test = to ch.load('ml_data/split.pt')
 train_dataset = ConcatDataset([ProteinDataset(s, path) for s in train])
 test_dataset = ConcatDataset([ProteinDataset(s, path) for s in test])
-trainloader = DataLoader(train_dataset, batch_size=512, shuffle=True)
-testloader = DataLoader(test_dataset, batch_size=512, shuffle=False)
-len(train_dataset), len(test_dataset), len(train_dataset) + len(test_dataset)
+trainloader = DataLoader(train_dataset, batch_size=128, shuffle=True)
+testloader = DataLoader(test_dataset, batch_size=128, shuffle=False)
+# len(train_dataset), len(test_dataset), len(train_dataset) + len(test_dataset)
 
+def get_preweights(X):
+    mask = (X[0] == 0) & (X[1] == 0)
+    X = X[:,~mask]
+    n_eff = X.shape[1]
+    h=0.5
+    cov = np.cov(X, rowvar=True)
+    cho_cov = torch.tensor(cholesky(cov, lower=True)) * h # lower triangular
+    h_det = cho_cov.diag().prod() # torch.det(cho_cov) # product of diagonal
 
-phi_grid, psi_grid = np.meshgrid(np.linspace(-180, 180, 100), np.linspace(-180, 180, 100))
-grid = np.vstack([phi_grid.ravel(), psi_grid.ravel()])
+    def K(x):
+        # 2 dimensional standard normal distribution
+        # return torch.exp(-0.5 * x.pow(2).sum(dim=1) / h) / (2 * np.pi * torch.sqrt(h_det))
+        return torch.exp(-0.5 * x.pow(2).sum(dim=1)) / (2 * np.pi * h_det)
+    def kde_pre_weights(xi):
+        xi = torch.tensor(xi) if not isinstance(xi, torch.Tensor) else xi
+        if xi.ndim == 1:
+            xi = xi.unsqueeze(1)
+        points = torch.tensor(solve_triangular(cho_cov, X, lower=True))
+        xi = torch.tensor(solve_triangular(cho_cov, xi, lower=True))
+        xi = xi.T.unsqueeze(-1)
+        likelihood = K(points.unsqueeze(0) - xi)# * weights
+        # likelihood = likelihood.sum(dim=1) / weights.sum()
+        return likelihood
+
+    phi_grid, psi_grid = np.meshgrid(np.linspace(-180, 180, 180), np.linspace(-180, 180, 180))
+    grid = np.vstack([phi_grid.ravel(), psi_grid.ravel()])
+    preweights = kde_pre_weights(grid).reshape(*phi_grid.shape,-1)
+    return preweights, n_eff
+
 diff = lambda x1, x2: min(abs(x1 - x2), 360 - abs(x1 - x2))
-h = 0.5
+s = [sum(lengths[:i]) for i,l in enumerate(lengths)]
+
+import itertools
+grid_size = 5
+values = np.linspace(0, 1, grid_size)
+combinations = [comb for comb in itertools.product(values, repeat=4) if sum(comb) == 1]
+
 results = []
-for i in range(0,10,2):
-    wi = np.power(2,i)
-    for j in range(0,10,2):
-        wj = np.power(2,j)
-        for k in range(0,10,2):
-            wk = np.power(2,k)
-            for l in tqdm(range(0,10,2)):
-                wl = np.power(2,l)
-                ws = [wi,wj,wk,wl]
-                weights = np.concatenate([np.array([w]*l) for w,l in zip(ws, lengths)])
-                for i in np.random.choice(len(train_dataset), 16):
-                    x, xres, af, y = train_dataset[i]
-                    x = x.numpy()
-                    y = y.numpy()
-                    kde = gaussian_kde(x, weights=weights, bw_method=h)
-                    probs = kde(grid).reshape(phi_grid.shape)
-                    kdepeak = grid[:,probs.argmax()]
-                    dist = np.sqrt(diff(y[0], kdepeak[0])**2 + diff(y[1], kdepeak[1])**2)
-                    results.append([wi,wj,wk,wl,dist])
-                    with open ('results_.csv', 'a') as f:
-                        f.write(f'{wi},{wj},{wk},{wl},{dist}\n')
-df = pd.DataFrame(results, columns=['w4', 'w5', 'w6', 'w7', 'da'])
-df.to_csv('results.csv', index=False)
+for i in tqdm(range(1000)):
+    X,xres,af,y = train_dataset[i]
+    
+    try:
+        preweights = []
+        n_effs = []
+        for i in range(3):
+            preweight, n_eff = get_preweights(X[:,s[i]:s[i+1]])
+            preweights.append(preweight)
+            n_effs.append(n_eff)
+        preweight, n_eff = get_preweights(X[:,s[3]:])
+        preweights.append(preweight)
+        n_effs.append(n_eff)
+
+        phi_grid, psi_grid = np.meshgrid(np.linspace(-180, 180, 180), np.linspace(-180, 180, 180))
+        grid = np.vstack([phi_grid.ravel(), psi_grid.ravel()])
+    except Exception as e:
+        print(e)
+        continue
+    
+    for w1,w2,w3,w4 in combinations:
+        kdews = torch.tensor([w1,w2,w3,w4])
+        n = [w*n for w,n in zip(kdews, n_effs)]
+        probs = torch.stack([(p * kdews[i]).sum(dim=-1) for i,p in enumerate(preweights)]).sum(dim=0) / sum(n)
+        kdepeak = grid[:,probs.argmax()]
+        dist = np.sqrt(diff(y[0], kdepeak[0])**2 + diff(y[1], kdepeak[1])**2)
+        # print(y, kdepeak, probs.max(), dist)
+        results.append([w1,w2,w3,w4,dist.item()])
+    
+    if i % 10 == 0:
+        results_df = pd.DataFrame(results, columns=['w1', 'w2', 'w3', 'w4', 'da'])
+        results_df.to_csv('results.csv', index=False)
+
+results_df = pd.DataFrame(results, columns=['w1', 'w2', 'w3', 'w4', 'da'])
+results_df.to_csv('results.csv', index=False)

@@ -146,6 +146,7 @@ def find_kdepeak_af(phi_psi_dist, bw_method, af, return_peaks=False):
         print(f'\tKDEPEAK: Using kdepeak of cluster {argmin - 1}')
     target = targets[argmin]
     target = pd.Series({'phi': target[0], 'psi': target[1]})
+    print(target)
 
     if return_peaks:
         return target, kdepeak, cluster_peaks
