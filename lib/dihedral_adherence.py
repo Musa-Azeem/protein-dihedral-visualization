@@ -37,9 +37,10 @@ from lib.ml.models import MLPredictor
 class DihedralAdherence():
     def __init__(
             self, casp_protein_id, winsizes, pdbmine_url, 
-            projects_dir='tests', pdbmine_cache_dir='casp_cache',
+            projects_dir='tests',
             kdews=None, mode='kde',
-            model=None, ml_lengths=[4096, 512, 256, 256], weights_file='ml_data/best_model.pt', device='cpu'
+            model=None, ml_lengths=[4096, 512, 256, 256], weights_file='ml_data/best_model.pt', device='cpu',
+            pdbmine_cache_dir='casp_cache',
         ):
         print(f'Initializing {casp_protein_id} ...')
         self.casp_protein_id = casp_protein_id
