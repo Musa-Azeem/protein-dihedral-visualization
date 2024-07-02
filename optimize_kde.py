@@ -136,7 +136,7 @@ for i,(X,xres,af,y) in enumerate(train_dataset):
     
     # winsize 7 - if there are matches for 7, there are matches for all
     x = X[:,s[3]:]
-    if x.sum() > 0:
+    if ((x[0] != 0) & (x[1] != 0)).sum() > 2:
         idxs[3].append(i)
         idxs[2].append(i)
         idxs[1].append(i)
@@ -145,7 +145,7 @@ for i,(X,xres,af,y) in enumerate(train_dataset):
 
     # winsize 6 - if there are matches for 6, there are matches for 5 and 4
     x = X[:,s[2]:s[3]]
-    if x.sum() > 0:
+    if ((x[0] != 0) & (x[1] != 0)).sum() > 2:
         idxs[2].append(i)
         idxs[1].append(i)
         idxs[0].append(i)
@@ -153,7 +153,7 @@ for i,(X,xres,af,y) in enumerate(train_dataset):
 
     # winsize 5 - if there are matches for 5, there are matches for 4
     x = X[:,s[1]:s[2]]
-    if x.sum() > 0:
+    if ((x[0] != 0) & (x[1] != 0)).sum() > 2:
         idxs[1].append(i)
         idxs[0].append(i)
         continue
@@ -164,10 +164,10 @@ for i,(X,xres,af,y) in enumerate(train_dataset):
 # all windows:
 grid_size = 6
 values = np.linspace(0, 1, grid_size).round(5)
-run_kde_grid_search(idxs[3][:1000], 'results_w7.csv', values, [4,5,6,7])
+run_kde_grid_search(idxs[3][:2000], 'results_w7.csv', values, [4,5,6,7])
 
 # 6 and below:
-run_kde_grid_search(idxs[2][:1000], 'results_w6.csv', values, [4,5,6])
+run_kde_grid_search(idxs[2][:2000], 'results_w6.csv', values, [4,5,6])
 
 # 5 and 4:
-run_kde_grid_search(idxs[1][:1000], 'results_w5.csv', values, [4,5])
+run_kde_grid_search(idxs[1][:2000], 'results_w5.csv', values, [4,5])

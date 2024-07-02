@@ -36,7 +36,9 @@ from lib.ml.models import MLPredictor
 
 class DihedralAdherence():
     def __init__(
-            self, casp_protein_id, winsizes, pdbmine_url, projects_dir='tests', kdews=None, mode='kde',
+            self, casp_protein_id, winsizes, pdbmine_url, 
+            projects_dir='tests', pdbmine_cache_dir='casp_cache',
+            kdews=None, mode='kde',
             model=None, ml_lengths=[4096, 512, 256, 256], weights_file='ml_data/best_model.pt', device='cpu'
         ):
         print(f'Initializing {casp_protein_id} ...')
@@ -45,6 +47,7 @@ class DihedralAdherence():
         self.winsize_ctxt = winsizes[-1]
         self.pdbmine_url = pdbmine_url
         self.outdir = Path(f'{projects_dir}/{casp_protein_id}_win{"-".join([str(w) for w in winsizes])}')
+        self.pdbmine_cache_dir = Path(pdbmine_cache_dir)
         if self.outdir.exists():
             print('Results already exist')
         else:
@@ -83,7 +86,7 @@ class DihedralAdherence():
         for i,winsize in enumerate(self.winsizes):
             self.queries.append(PDBMineQuery(
                 self.casp_protein_id, self.pdb_code, winsize, self.pdbmine_url,
-                self.sequence, self.kdews[i]
+                self.sequence, self.kdews[i], self.pdbmine_cache_dir
             ))
             self.queries[-1].set_get_subseq(self.winsize_ctxt)
         self.queried = False
