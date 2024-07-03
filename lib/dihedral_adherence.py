@@ -167,6 +167,30 @@ class DihedralAdherence():
         get_da_for_all_predictions(self, replace, da_scale)
         # get_da_for_all_predictions_ml(self, replace, da_scale)
         self._get_grouped_preds()
+    
+    @property
+    def n_samples_xray(self):
+        if self.xray_phi_psi is None:
+            return None
+        if not hasattr(self, '_n_samples_xray'):    
+            self._n_samples_xray = pd.DataFrame(
+                list(self.xray_phi_psi.n_samples_list.apply(lambda x: eval(x) if x is not np.nan else [np.nan]*4).values),
+                columns=[w for w in self.winsizes],
+                index=self.xray_phi_psi.seq_ctxt
+            ).assign(seq_ctxt=self.xray_phi_psi.seq_ctxt)
+        return self._n_samples_xray
+    
+    @property
+    def n_samples_pred(self):
+        if self.phi_psi_predictions is None:
+            return None
+        if not hasattr(self, '_n_samples_pred'):
+            self._n_samples_pred = pd.DataFrame(
+                list(self.phi_psi_predictions.n_samples_list.apply(lambda x: eval(x) if x is not np.nan else [np.nan]*4).values),
+                columns=[w for w in self.winsizes],
+                index=self.phi_psi_predictions.seq_ctxt
+            ).assign(seq_ctxt=self.phi_psi_predictions.seq_ctxt)
+        return self._n_samples_pred
 
     def load_results(self):
         for query in self.queries:
