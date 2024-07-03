@@ -87,18 +87,21 @@ for protein in tqdm(proteins):
 
             # Choose peak that is closest to AlphaFold prediction
             dists = calc_da(af, cluster_peaks)
-            argmin = dists.argmin()
-            # print(argmin, cluster_peaks[argmin])
-            chosen_clusteri['af'].append(argmin)
-            chosen_clusteri['af_prob'].append(probs[argmin])
-            chosen_clusteri['af_prob_ratio'].append(probs[argmin]/probs[0])
-
+            af_argmin = dists.argmin()
+            af_probs_ratio = probs[af_argmin]/probs[0]
+            
             # Choose peak that is closest toX-ray prediction
             dists = calc_da(xray, cluster_peaks)
             argmin = dists.argmin()
+            xray_probs_ratio = probs[argmin]/probs[0]
+
+            chosen_clusteri['af'].append(af_argmin)
+            chosen_clusteri['af_prob'].append(probs[af_argmin])
+            chosen_clusteri['af_prob_ratio'].append(af_probs_ratio)
+
             chosen_clusteri['xray'].append(argmin)
             chosen_clusteri['xray_prob'].append(probs[argmin])
-            chosen_clusteri['xray_prob_ratio'].append(probs[argmin]/probs[0])
+            chosen_clusteri['xray_prob_ratio'].append(xray_probs_ratio)
 
             # Choose peak that would be PDBMine prediction - highest prob
             chosen_clusteri['pdbmine'].append(0)
@@ -106,6 +109,8 @@ for protein in tqdm(proteins):
             chosen_clusteri['pdbmine_prob_ratio'].append(1)
         except Exception as e:
             print(e)
+            continue
+        
         chosen_clusteri['seq'].append(seq)
         n_samples = phi_psi_dist.groupby('winsize').size().to_dict()
         for w in winsizes:
