@@ -19,3 +19,5 @@ ml_data
 ml_samples
 tensorboard
 alphafold_predictions
+casp_cache
+casp_da
