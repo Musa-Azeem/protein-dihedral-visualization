@@ -410,3 +410,59 @@ def plot_res_vs_da_1plot(ins, pred_id, pred_name, highlight_res, limit_quantile,
     plt.show()
 
     return both
+
+def plot_dist_kde(ins, pred_id, percentile, fn):
+
+    results = ins.grouped_preds.set_index('protein_id')
+    xray_phi_psi = ins.xray_phi_psi.dropna().copy()
+    af_phi_psi = ins.phi_psi_predictions[ins.phi_psi_predictions.protein_id == ins.alphafold_id].dropna().copy()
+    xray_phi_psi['rmsd'] = 0
+    af_phi_psi['rmsd'] = results.loc[ins.alphafold_id].RMS_CA
+
+    other_id = ins.protein_ids[0]
+    other_phi_psi = ins.phi_psi_predictions[ins.phi_psi_predictions.protein_id == other_id].dropna().copy()
+    other_phi_psi['rmsd'] = results.loc[other_id].RMS_CA
+
+    print(f'DA: Xray {xray_phi_psi.da.mean():.2f}, AF {af_phi_psi.da.mean():.2f}, {pred_id} {other_phi_psi.da.mean():.2f}')
+    print(f'RMSD: Xray {xray_phi_psi.rmsd.mean():.2f}, AF {af_phi_psi.rmsd.mean():.2f}, {pred_id} {other_phi_psi.rmsd.mean():.2f}')
+
+    df = pd.concat([
+        xray_phi_psi, 
+        af_phi_psi.drop('da_na', axis=1),
+        other_phi_psi.drop('da_na', axis=1)
+    ])
+
+    def get_probs(x, da):
+        kde = gaussian_kde(da)
+        p = kde(x)
+        c = np.cumsum(p) / np.sum(p)
+        peak = x[np.argmax(p)]
+        return p, c, peak
+
+    fig, axes = plt.subplots(2, sharex=True, figsize=(10, 5))
+    x = np.linspace(0, df.da.max(), 1000)
+
+    def plot(df, label, color):
+        p, c, peak = get_probs(x, df.da)
+        axes[0].plot(x, p, color=color, label=f'{label} [RMSD={df.rmsd.iloc[0]}], peak at {peak:.2f}')
+        axes[0].fill_between(x, 0, p, alpha=0.2, color=color)
+        axes[0].vlines(peak, 0, p.max(), color=color)
+        perc = x[np.argmax(c > percentile)]
+        suffix = 'st' if ((percentile*100) % 10 == 1 and percentile != 0.11) else 'nd' if ((percentile*100) % 10 == 2 and percentile != 0.12) else 'th'
+        axes[1].plot(x, c, color=color, label=f'{label}, {int(percentile*100)}{suffix} percentile at {perc:.2f}')
+        axes[1].vlines(perc, 0, 1, color=color)
+        axes[1].fill_between(x, 0, c, alpha=0.2)
+
+    colors = sns.color_palette("tab10")
+    plot(xray_phi_psi, 'Xray', colors[0])
+    plot(af_phi_psi, 'AF', colors[1])
+    plot(other_phi_psi, other_id[7:10], colors[2])
+    axes[0].legend()
+    axes[0].set_ylabel('Density')
+    axes[1].legend(loc='lower right')
+    axes[1].set_xlabel('Number of matches')
+    axes[1].set_ylabel('Cumulative density')
+    # axes[0].set_xlim(0, 5000)
+    # axes[1].set_xlim(0, 5000)
+    fig.suptitle('Dihedral adherence distribution')
+    plt.show()

@@ -47,6 +47,9 @@ def get_da_for_all_predictions_(ins, da_scale, scale_das=True, bw_method=None):
         except LinAlgError as e:
             print('\tSingular Matrix - skipping')
             continue # leave as nan
+        except ValueError as e:
+            print('\tSample count error - skipping')
+            continue
 
         # Distance to kde peak
         xray = ins.xray_phi_psi.loc[ins.xray_phi_psi.seq_ctxt == seq][['phi','psi']]

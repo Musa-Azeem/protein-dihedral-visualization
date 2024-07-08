@@ -5,12 +5,14 @@ from lib.retrieve_data import (
     retrieve_target_list, 
     retrieve_pdb_file, 
     retrieve_casp_predictions, 
-    retrieve_casp_results
+    retrieve_casp_results,
+    retrieve_alphafold_prediction
 )
 from lib.utils import get_seq_funcs, check_alignment, compute_rmsd, get_find_target
 from lib.modules import (
     get_phi_psi_xray,
     get_phi_psi_predictions,
+    get_phi_psi_af,
     seq_filter,
     get_da_for_all_predictions,
     fit_linregr,
@@ -23,7 +25,8 @@ from lib.plotting import (
     plot_da_vs_rmsd,
     plot_heatmap,
     plot_da_vs_rmsd_simple,
-    plot_res_vs_da_1plot
+    plot_res_vs_da_1plot,
+    plot_dist_kde
 )
 from lib.constants import AMINO_ACID_CODES, AMINO_ACID_CODES_INV, AMINO_ACID_CODE_NAMES
 import pandas as pd
@@ -66,11 +69,13 @@ class DihedralAdherence():
         self.results = retrieve_casp_results(casp_protein_id)
         self.xray_fn, self.sequence = retrieve_pdb_file(self.pdb_code)
         self.predictions_dir = retrieve_casp_predictions(casp_protein_id)
+        self.af_fn = retrieve_alphafold_prediction(self.pdb_code)
 
         # Get sequence and sequence context functions
         _, self.get_center, self.get_seq_ctxt = get_seq_funcs(self.winsize_ctxt)
         
         self.xray_phi_psi = None
+        self.af_phi_psi = None
         self.phi_psi_predictions = None
         self.overlapping_seqs = None
         self.seqs = None
@@ -135,6 +140,9 @@ class DihedralAdherence():
         # TODO: align pos column of predictions with xray_phi_psi using sequence alignment
         self.xray_phi_psi = get_phi_psi_xray(self, replace)
         self.phi_psi_predictions = get_phi_psi_predictions(self, replace)
+        if self.af_fn is not None:
+            self.af_phi_psi = get_phi_psi_af(self, replace)
+
         if self.queried:
             self.get_results_metadata()
         # filter
@@ -199,6 +207,10 @@ class DihedralAdherence():
         self.queried = True
         self.xray_phi_psi = pd.read_csv(self.outdir / 'xray_phi_psi.csv')
         self.phi_psi_predictions = pd.read_csv(self.outdir / 'phi_psi_predictions.csv')
+        if (self.outdir / 'af_phi_psi.csv').exists():
+            self.af_phi_psi = pd.read_csv(self.outdir / 'af_phi_psi.csv')
+        else:
+            print('No AlphaFold phi-psi data found')
         self.get_results_metadata()
         
     def load_results_da(self):
@@ -210,6 +222,10 @@ class DihedralAdherence():
         self.queried = True
         self.xray_phi_psi = pd.read_csv(self.outdir / self.xray_da_fn)
         self.phi_psi_predictions = pd.read_csv(self.outdir / self.pred_da_fn)
+        if (self.outdir / 'af_phi_psi.csv').exists():
+            self.af_phi_psi = pd.read_csv(self.outdir / 'af_phi_psi.csv')
+        else:
+            print('No AlphaFold phi-psi data found')
         self.get_results_metadata()
         self._get_grouped_preds()
 
@@ -353,6 +369,14 @@ class DihedralAdherence():
             print('No DA data available. Run compute_das() or load_results_da() first')
             return
         plot_heatmap(self, fillna, fn)
+    
+    def plot_dist_kde(self, pred_id=None, percentile=None, fn=None):
+        if not 'da' in self.phi_psi_predictions.columns:
+            print('No DA data available. Run compute_das() or load_results_da() first')
+            return
+        protein_id = pred_id or self.protein_ids[0]
+        percentile = percentile or 0.95
+        plot_dist_kde(self, protein_id, percentile, fn)
     
     def get_id(self, group_id):
         return f'{self.casp_protein_id}TS{group_id}'

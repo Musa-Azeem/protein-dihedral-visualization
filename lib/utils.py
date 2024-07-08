@@ -110,21 +110,21 @@ def find_kdepeak_w(phi_psi_dist, bw_method, return_prob=False):
         case 2:
             # 4 and 5
             print('\tWeights: 4:0, 5:1')
-            phi_psi_dist.loc[phi_psi_dist.weight == weights[0], 'weight'] = 0
-            phi_psi_dist.loc[phi_psi_dist.weight == weights[1], 'weight'] = 1.
+            phi_psi_dist.loc[phi_psi_dist.weight == weights[0], 'weight'] = 0.01
+            phi_psi_dist.loc[phi_psi_dist.weight == weights[1], 'weight'] = 0.99 
         case 3:
             # 4, 5, 6
             print('\tWeights: 4:0, 5:0.2, 6:0.8')
-            phi_psi_dist.loc[phi_psi_dist.weight == weights[0], 'weight'] = 0
-            phi_psi_dist.loc[phi_psi_dist.weight == weights[1], 'weight'] = 0.2
-            phi_psi_dist.loc[phi_psi_dist.weight == weights[2], 'weight'] = 0.8
+            phi_psi_dist.loc[phi_psi_dist.weight == weights[0], 'weight'] = 0.01
+            phi_psi_dist.loc[phi_psi_dist.weight == weights[1], 'weight'] = 0.195
+            phi_psi_dist.loc[phi_psi_dist.weight == weights[2], 'weight'] = 0.795
         case 4:
             # 4, 5, 6, 7
             print('\tWeights: 4:0, 5:0, 6:0.2, 7:0.8')
-            phi_psi_dist.loc[phi_psi_dist.weight == weights[0], 'weight'] = 0
-            phi_psi_dist.loc[phi_psi_dist.weight == weights[1], 'weight'] = 0
-            phi_psi_dist.loc[phi_psi_dist.weight == weights[2], 'weight'] = 0.2
-            phi_psi_dist.loc[phi_psi_dist.weight == weights[3], 'weight'] = 0.8
+            phi_psi_dist.loc[phi_psi_dist.weight == weights[0], 'weight'] = 0.01
+            phi_psi_dist.loc[phi_psi_dist.weight == weights[1], 'weight'] = 0.01
+            phi_psi_dist.loc[phi_psi_dist.weight == weights[2], 'weight'] = 0.19
+            phi_psi_dist.loc[phi_psi_dist.weight == weights[3], 'weight'] = 0.79
     # print(phi_psi_dist.groupby('winsize').mean(numeric_only=True))
     kernel = gaussian_kde(
         phi_psi_dist[['phi','psi']].T, 
@@ -257,7 +257,6 @@ def compute_rmsd(fnA, fnB, startA=None, endA=None, startB=None, endB=None, print
 def get_find_target(ins):
     xray_da_fn = 'xray_phi_psi_da.csv'
     pred_da_fn = 'phi_psi_predictions_da.csv'
-    # af = ins.phi_psi_predictions[(ins.phi_psi_predictions.protein_id == ins.alphafold_id) & (ins.phi_psi_predictions.seq_ctxt == seq)]
     match(ins.mode):
         case 'kde':
             def find_target_wrapper(phi_psi_dist, bw_method):
@@ -273,13 +272,15 @@ def get_find_target(ins):
             pred_da_fn = 'phi_psi_predictions_da_af.csv'
             def find_target_wrapper(phi_psi_dist, bw_method):
                 seq = phi_psi_dist.seq.values[0]
-                af = ins.phi_psi_predictions[(ins.phi_psi_predictions.protein_id == ins.alphafold_id) & (ins.phi_psi_predictions.seq_ctxt == seq)]
+                # af = ins.phi_psi_predictions[(ins.phi_psi_predictions.protein_id == ins.alphafold_id) & (ins.phi_psi_predictions.seq_ctxt == seq)]
+                af = ins.af_phi_psi[ins.af_phi_psi.seq_ctxt == seq]
                 return find_kdepeak_af(phi_psi_dist, bw_method, af)
         case 'weighted_kde_af':
             xray_da_fn = 'xray_phi_psi_da_afw.csv'
             pred_da_fn = 'phi_psi_predictions_da_afw.csv'
             def find_target_wrapper(phi_psi_dist, bw_method):
                 seq = phi_psi_dist.seq.values[0]
-                af = ins.phi_psi_predictions[(ins.phi_psi_predictions.protein_id == ins.alphafold_id) & (ins.phi_psi_predictions.seq_ctxt == seq)]
+                # af = ins.phi_psi_predictions[(ins.phi_psi_predictions.protein_id == ins.alphafold_id) & (ins.phi_psi_predictions.seq_ctxt == seq)]
+                af = ins.af_phi_psi[ins.af_phi_psi.seq_ctxt == seq]
                 return find_kdepeak_af(phi_psi_dist, bw_method, af, find_peak=find_kdepeak_w)
     return find_target_wrapper, Path(xray_da_fn), Path(pred_da_fn)
