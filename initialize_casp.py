@@ -1,5 +1,5 @@
 from lib import DihedralAdherence
-from load_dotenv import load_dotenv
+from dotenv import load_dotenv
 import os
 load_dotenv()
 
@@ -11,7 +11,8 @@ winsizes = [4,5,6,7]
 kdews = [1, 32, 64, 128]
 
 for protein in proteins:
-    da = DihedralAdherence(protein, winsizes, PDBMINE_URL, PROJECTS_DIR, kdews, mode='kde_af')
-    da.compute_structures()
-    da.query_pdbmine()
+    da = DihedralAdherence(protein, winsizes, PDBMINE_URL, PROJECTS_DIR, kdews, mode='weighted_kde_af')
+    # da.compute_structures()
+    # da.query_pdbmine()
+    da.load_results()
     da.compute_das()

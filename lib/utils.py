@@ -94,26 +94,67 @@ def find_kdepeak(phi_psi_dist, bw_method, return_prob=False):
         return kdepeak, kde.max()
     return kdepeak
 
-def find_kdepeak_af(phi_psi_dist, bw_method, af, return_peaks=False):
+def find_kdepeak_w(phi_psi_dist, bw_method, return_prob=False):
+    # Find probability of each point
+    phi_psi_dist = phi_psi_dist.loc[~phi_psi_dist[['phi', 'psi']].isna().any(axis=1)].copy()
+    n_windows = phi_psi_dist.winsize.nunique()
+    weights = phi_psi_dist['weight'].unique()
+    # print(n_windows, weights)
+    # for now, hard code weights for winsizes 4,5,6,7
+    phi_psi_dist['weight'] = phi_psi_dist['weight'].astype(float)
+    match(n_windows):
+        case 1:
+            # only first window size
+            print('\tWeights: 4:1')
+            phi_psi_dist['weight'] = 1.
+        case 2:
+            # 4 and 5
+            print('\tWeights: 4:0, 5:1')
+            phi_psi_dist.loc[phi_psi_dist.weight == weights[0], 'weight'] = 0
+            phi_psi_dist.loc[phi_psi_dist.weight == weights[1], 'weight'] = 1.
+        case 3:
+            # 4, 5, 6
+            print('\tWeights: 4:0, 5:0.2, 6:0.8')
+            phi_psi_dist.loc[phi_psi_dist.weight == weights[0], 'weight'] = 0
+            phi_psi_dist.loc[phi_psi_dist.weight == weights[1], 'weight'] = 0.2
+            phi_psi_dist.loc[phi_psi_dist.weight == weights[2], 'weight'] = 0.8
+        case 4:
+            # 4, 5, 6, 7
+            print('\tWeights: 4:0, 5:0, 6:0.2, 7:0.8')
+            phi_psi_dist.loc[phi_psi_dist.weight == weights[0], 'weight'] = 0
+            phi_psi_dist.loc[phi_psi_dist.weight == weights[1], 'weight'] = 0
+            phi_psi_dist.loc[phi_psi_dist.weight == weights[2], 'weight'] = 0.2
+            phi_psi_dist.loc[phi_psi_dist.weight == weights[3], 'weight'] = 0.8
+    # print(phi_psi_dist.groupby('winsize').mean(numeric_only=True))
+    kernel = gaussian_kde(
+        phi_psi_dist[['phi','psi']].T, 
+        weights=phi_psi_dist['weight'], 
+        bw_method=bw_method
+    )
+    phi_grid, psi_grid = np.meshgrid(np.linspace(-180, 180, 360), np.linspace(-180, 180, 360))
+    grid = np.vstack([phi_grid.ravel(), psi_grid.ravel()])
+    kde = kernel(grid).reshape(phi_grid.shape)
+    kdepeak = grid[:,kde.argmax()]
+    kdepeak = pd.Series({'phi': kdepeak[0], 'psi': kdepeak[1]})
+
+    if return_prob:
+        return kdepeak, kde.max()
+    return kdepeak
+
+def find_kdepeak_af(phi_psi_dist, bw_method, af, return_peaks=False, find_peak=find_kdepeak):
     # Find probability of each point
     if af.shape[0] == 0:
         print('\tNo AlphaFold prediction - Using ordinary KDE')
         if return_peaks:
-            peak = find_kdepeak(phi_psi_dist, bw_method)
+            peak = find_peak(phi_psi_dist, bw_method)
             return peak, peak, None
-        return find_kdepeak(phi_psi_dist, bw_method)
+        return find_peak(phi_psi_dist, bw_method)
 
     af = af[['phi', 'psi']].values[0]
 
     phi_psi_dist = phi_psi_dist.loc[~phi_psi_dist[['phi', 'psi']].isna().any(axis=1)]
 
-    # # Find two clusters
-    # kmeans = KMeans(n_clusters=2)
-    # kmeans.fit(phi_psi_dist[['phi','psi']])
-    # phi_psi_dist['cluster'] = kmeans.labels_
-
     # Find clusters
-    # bandwidth = estimate_bandwidth(phi_psi_dist[['phi','psi']], n_samples=5000)
     bandwidth = 100
     ms = MeanShift(bandwidth=bandwidth, bin_seeding=True)
     ms.fit(phi_psi_dist[['phi','psi']])
@@ -121,20 +162,15 @@ def find_kdepeak_af(phi_psi_dist, bw_method, af, return_peaks=False):
 
     cluster_counts = phi_psi_dist.groupby('cluster').size()
     phi_psi_dist['cluster'] = phi_psi_dist['cluster'].apply(lambda x: x if cluster_counts[x] > 4 else -1)
-    # if (phi_psi_dist.groupby('cluster').size() < 2).any():
-    #     print('\tOne cluster has less than 2 points - Using ordinary KDE')
-    #     return find_kdepeak(phi_psi_dist, bw_method)
 
     # find kdepeak for each cluster and entire dist
-    kdepeak = find_kdepeak(phi_psi_dist, bw_method)
+    kdepeak = find_peak(phi_psi_dist, bw_method)
     cluster_peaks = []
     for i in phi_psi_dist.cluster.unique():
         if i == -1:
             continue
-        kdepeak_c = find_kdepeak(phi_psi_dist[phi_psi_dist.cluster == i], bw_method)
+        kdepeak_c = find_peak(phi_psi_dist[phi_psi_dist.cluster == i], bw_method)
         cluster_peaks.append(kdepeak_c)
-    # kdepeak_c1 = find_kdepeak(phi_psi_dist[phi_psi_dist.cluster == 0], bw_method)
-    # kdepeak_c2 = find_kdepeak(phi_psi_dist[phi_psi_dist.cluster == 1], bw_method)
     print(f'\tFound {len(cluster_peaks)} Clusters')
     # Choose peak that is closest to AlphaFold prediction
     targets = np.array([kdepeak.values] + [k.values for k in cluster_peaks])
@@ -239,4 +275,11 @@ def get_find_target(ins):
                 seq = phi_psi_dist.seq.values[0]
                 af = ins.phi_psi_predictions[(ins.phi_psi_predictions.protein_id == ins.alphafold_id) & (ins.phi_psi_predictions.seq_ctxt == seq)]
                 return find_kdepeak_af(phi_psi_dist, bw_method, af)
+        case 'weighted_kde_af':
+            xray_da_fn = 'xray_phi_psi_da_afw.csv'
+            pred_da_fn = 'phi_psi_predictions_da_afw.csv'
+            def find_target_wrapper(phi_psi_dist, bw_method):
+                seq = phi_psi_dist.seq.values[0]
+                af = ins.phi_psi_predictions[(ins.phi_psi_predictions.protein_id == ins.alphafold_id) & (ins.phi_psi_predictions.seq_ctxt == seq)]
+                return find_kdepeak_af(phi_psi_dist, bw_method, af, find_peak=find_kdepeak_w)
     return find_target_wrapper, Path(xray_da_fn), Path(pred_da_fn)
