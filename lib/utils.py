@@ -182,7 +182,6 @@ def find_kdepeak_af(phi_psi_dist, bw_method, af, return_peaks=False, find_peak=f
         print(f'\tKDEPEAK: Using kdepeak of cluster {argmin - 1}')
     target = targets[argmin]
     target = pd.Series({'phi': target[0], 'psi': target[1]})
-    print(target)
 
     if return_peaks:
         return target, kdepeak, cluster_peaks
@@ -257,6 +256,11 @@ def compute_rmsd(fnA, fnB, startA=None, endA=None, startB=None, endB=None, print
 def get_find_target(ins):
     xray_da_fn = 'xray_phi_psi_da.csv'
     pred_da_fn = 'phi_psi_predictions_da.csv'
+    def get_af(seq):
+        if ins.af_phi_psi:
+            return ins.af_phi_psi[ins.af_phi_psi.seq_ctxt == seq]
+        else:
+            return ins.phi_psi_predictions[(ins.phi_psi_predictions.protein_id == ins.alphafold_id) & (ins.phi_psi_predictions.seq_ctxt == seq)]
     match(ins.mode):
         case 'kde':
             def find_target_wrapper(phi_psi_dist, bw_method):
@@ -271,16 +275,12 @@ def get_find_target(ins):
             xray_da_fn = 'xray_phi_psi_da_af.csv'
             pred_da_fn = 'phi_psi_predictions_da_af.csv'
             def find_target_wrapper(phi_psi_dist, bw_method):
-                seq = phi_psi_dist.seq.values[0]
-                # af = ins.phi_psi_predictions[(ins.phi_psi_predictions.protein_id == ins.alphafold_id) & (ins.phi_psi_predictions.seq_ctxt == seq)]
-                af = ins.af_phi_psi[ins.af_phi_psi.seq_ctxt == seq]
+                af = get_af(phi_psi_dist.seq.values[0])
                 return find_kdepeak_af(phi_psi_dist, bw_method, af)
         case 'weighted_kde_af':
             xray_da_fn = 'xray_phi_psi_da_afw.csv'
             pred_da_fn = 'phi_psi_predictions_da_afw.csv'
             def find_target_wrapper(phi_psi_dist, bw_method):
-                seq = phi_psi_dist.seq.values[0]
-                # af = ins.phi_psi_predictions[(ins.phi_psi_predictions.protein_id == ins.alphafold_id) & (ins.phi_psi_predictions.seq_ctxt == seq)]
-                af = ins.af_phi_psi[ins.af_phi_psi.seq_ctxt == seq]
+                af = get_af(phi_psi_dist.seq.values[0])
                 return find_kdepeak_af(phi_psi_dist, bw_method, af, find_peak=find_kdepeak_w)
     return find_target_wrapper, Path(xray_da_fn), Path(pred_da_fn)
