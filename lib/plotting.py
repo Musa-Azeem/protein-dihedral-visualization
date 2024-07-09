@@ -298,11 +298,13 @@ def plot_heatmap(ins, fillna, fn):
 def plot_da_vs_rmsd_simple(ins, axlims, fn):
     grouped_preds = ins.grouped_preds.dropna()
     # grouped_preds = grouped_preds[grouped_preds.RMS_CA < 40]
+    # grouped_preds = grouped_preds[grouped_preds.RMS_CA < 30]
     regr = linregress(grouped_preds.da, grouped_preds.RMS_CA)
-    print(regr.slope, regr.intercept)
+    print(f'Slope: {regr.slope}, Intercept: {regr.intercept}')
 
     af = grouped_preds[grouped_preds.protein_id == ins.alphafold_id]
     xray_da = ins.xray_phi_psi.da.mean()
+
 
     sns.set_theme(style="whitegrid")
     sns.set_palette("pastel")
@@ -325,7 +327,7 @@ def plot_da_vs_rmsd_simple(ins, axlims, fn):
         s = f'y = {regr.slope:.1E}x + {regr.intercept:.1f}'
     else:
         s = f'y = {regr.slope:.1E}x - {-regr.intercept:.1f}'
-    ax.text(.025,.86, s, transform=ax.transAxes, fontsize=12, color='red',
+    ax.text(.025,.76, s, transform=ax.transAxes, fontsize=12, color='red',
             bbox=dict(boxstyle='round,pad=0.4', edgecolor='red', facecolor='white'))
     if axlims:
         ax.set_xlim(axlims[0][0], axlims[0][1])
@@ -415,20 +417,22 @@ def plot_dist_kde(ins, pred_id, percentile, fn):
 
     results = ins.grouped_preds.set_index('protein_id')
     xray_phi_psi = ins.xray_phi_psi.dropna().copy()
-    af_phi_psi = ins.phi_psi_predictions[ins.phi_psi_predictions.protein_id == ins.alphafold_id].dropna().copy()
     xray_phi_psi['rmsd'] = 0
-    af_phi_psi['rmsd'] = results.loc[ins.alphafold_id].RMS_CA
+    # af_phi_psi = ins.phi_psi_predictions[ins.phi_psi_predictions.protein_id == ins.alphafold_id].dropna().copy()
+    # af_phi_psi['rmsd'] = results.loc[ins.alphafold_id].RMS_CA
 
     other_id = ins.protein_ids[0]
     other_phi_psi = ins.phi_psi_predictions[ins.phi_psi_predictions.protein_id == other_id].dropna().copy()
     other_phi_psi['rmsd'] = results.loc[other_id].RMS_CA
 
-    print(f'DA: Xray {xray_phi_psi.da.mean():.2f}, AF {af_phi_psi.da.mean():.2f}, {pred_id} {other_phi_psi.da.mean():.2f}')
-    print(f'RMSD: Xray {xray_phi_psi.rmsd.mean():.2f}, AF {af_phi_psi.rmsd.mean():.2f}, {pred_id} {other_phi_psi.rmsd.mean():.2f}')
+    print(f'DA: Xray {xray_phi_psi.da.mean():.2f}, {pred_id} {other_phi_psi.da.mean():.2f}')
+    # print(f'DA: Xray {xray_phi_psi.da.mean():.2f}, AF {af_phi_psi.da.mean():.2f}, {pred_id} {other_phi_psi.da.mean():.2f}')
+    print(f'RMSD: Xray {xray_phi_psi.rmsd.mean():.2f}, {pred_id} {other_phi_psi.rmsd.mean():.2f}')
+    # print(f'RMSD: Xray {xray_phi_psi.rmsd.mean():.2f}, AF {af_phi_psi.rmsd.mean():.2f}, {pred_id} {other_phi_psi.rmsd.mean():.2f}')
 
     df = pd.concat([
         xray_phi_psi, 
-        af_phi_psi.drop('da_na', axis=1),
+        # af_phi_psi.drop('da_na', axis=1),
         other_phi_psi.drop('da_na', axis=1)
     ])
 
@@ -455,12 +459,12 @@ def plot_dist_kde(ins, pred_id, percentile, fn):
 
     colors = sns.color_palette("tab10")
     plot(xray_phi_psi, 'Xray', colors[0])
-    plot(af_phi_psi, 'AF', colors[1])
+    # plot(af_phi_psi, 'AF', colors[1])
     plot(other_phi_psi, other_id[7:10], colors[2])
     axes[0].legend()
     axes[0].set_ylabel('Density')
     axes[1].legend(loc='lower right')
-    axes[1].set_xlabel('Number of matches')
+    axes[1].set_xlabel('Dihedral Adherence')
     axes[1].set_ylabel('Cumulative density')
     # axes[0].set_xlim(0, 5000)
     # axes[1].set_xlim(0, 5000)

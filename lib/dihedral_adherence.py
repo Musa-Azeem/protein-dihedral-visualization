@@ -237,6 +237,8 @@ class DihedralAdherence():
         )
         self.seqs = self.xray_phi_psi.seq_ctxt.unique()
         self.protein_ids = self.phi_psi_predictions.protein_id.unique()
+        if not self.alphafold_id in self.protein_ids:
+            print('No CASP AlphaFold prediction')
         return self.overlapping_seqs, self.seqs, self.protein_ids
     
     def fit_model(self):
