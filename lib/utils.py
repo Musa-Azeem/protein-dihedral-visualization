@@ -257,7 +257,7 @@ def get_find_target(ins):
     xray_da_fn = 'xray_phi_psi_da.csv'
     pred_da_fn = 'phi_psi_predictions_da.csv'
     def get_af(seq):
-        if ins.af_phi_psi:
+        if ins.af_phi_psi is not None:
             return ins.af_phi_psi[ins.af_phi_psi.seq_ctxt == seq]
         else:
             return ins.phi_psi_predictions[(ins.phi_psi_predictions.protein_id == ins.alphafold_id) & (ins.phi_psi_predictions.seq_ctxt == seq)]
