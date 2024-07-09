@@ -187,6 +187,35 @@ def find_kdepeak_af(phi_psi_dist, bw_method, af, return_peaks=False, find_peak=f
         return target, kdepeak, cluster_peaks
     return target
 
+def get_ml_pred_wrapper(phi_psi_dist, winsizes, res, af, ml, bw_method):
+    # Find probability of each point
+    if af.shape[0] == 0:
+        print('\tNo AlphaFold prediction - Using ordinary KDE')
+        return find_kdepeak(phi_psi_dist, bw_method)
+    af = af[['phi', 'psi']].values[0]
+    phi_psi_dist = phi_psi_dist.loc[~phi_psi_dist[['phi', 'psi']].isna().any(axis=1)]
+    winsizes = phi_psi_dist.winsize.unique()
+    peaks = []
+    for w in [4,5,6,7]:
+        x = phi_psi_dist.loc[phi_psi_dist.winsize == w, ['phi', 'psi']].values.T
+        if x.shape[1] < 3:
+            if x.shape[1] == 0:
+                peaks.append([0,0])
+            else:
+                peaks.append(x.mean(axis=1).tolist())
+            continue
+        kde = gaussian_kde(x, bw_method=0.5)
+        # print(kde.cho_cov)
+        phi_grid, psi_grid = np.meshgrid(np.linspace(-180, 180, 180), np.linspace(-180, 180, 180))
+        grid = np.vstack([phi_grid.ravel(), psi_grid.ravel()])
+        probs = kde(grid).reshape(phi_grid.shape)
+        # print(probs)
+        kdepeak = grid[:,probs.argmax()]
+        peaks.append(kdepeak.tolist())
+    peaks = np.array(peaks)
+    pred = get_ml_pred(peaks, res, af, ml)
+    return pd.Series({'phi': pred[0], 'psi': pred[1]})
+
 def calc_da_for_one(kdepeak, phi_psi):
     diff = lambda x1, x2: min(abs(x1 - x2), 360 - abs(x1 - x2))
     return np.sqrt(diff(phi_psi[0], kdepeak[0])**2 + diff(phi_psi[1], kdepeak[1])**2)
@@ -269,8 +298,9 @@ def get_find_target(ins):
             xray_da_fn = 'xray_phi_psi_da_ml.csv'
             pred_da_fn = 'phi_psi_predictions_da_ml.csv'
             def find_target_wrapper(phi_psi_dist, bw_method):
+                af = get_af(phi_psi_dist.seq.values[0])
                 res = ins.get_center(phi_psi_dist.seq.values[0])
-                return get_ml_pred(phi_psi_dist, ins.winsizes, res, ins.model)
+                return get_ml_pred_wrapper(phi_psi_dist, ins.winsizes, res, af, ins.model, bw_method)
         case 'kde_af':
             xray_da_fn = 'xray_phi_psi_da_af.csv'
             pred_da_fn = 'phi_psi_predictions_da_af.csv'

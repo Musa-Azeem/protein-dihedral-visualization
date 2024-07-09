@@ -4,22 +4,36 @@ import torch.nn.functional as F
 
 class MLPredictor():
     def __init__(self, lengths, device, weights_file):
-        self.model = LSTMNet(lengths).to(device)
+        self.model = KDENet().to(device)
         self.lengths = lengths
         self.device = device
         self.weights_file = weights_file
 
-    def predict(self, X, xres):
+    def predict(self, X, xres, af):
         with torch.no_grad():
-            X, xres = X.to(self.device), xres.to(self.device)
-            return self.model(X, xres).cpu()
+            X, xres, af = X.to(self.device), xres.to(self.device), af.to(self.device)
+            return self.model(X, xres, af).cpu()
     
-    def __call__(self, X, xres):
-        return self.predict(X, xres)
+    def __call__(self, X, xres, af):
+        return self.predict(X, xres, af)
     
     def load_weights(self):
         self.model.load_state_dict(torch.load(self.weights_file))
 
+class KDENet(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.l1 = nn.Linear(30, 64)
+        self.l2 = nn.Linear(64, 64)
+        self.out = nn.Linear(64, 2)
+    
+    def forward(self, X, xres, af):
+        x = torch.hstack([X.flatten(1), af, xres])
+        x = F.relu(self.l1(x))
+        x = F.relu(self.l2(x))
+        x = self.out(x)
+        return x
+    
 class LSTMNet(nn.Module):
     def __init__(self, lengths):
         super().__init__()
