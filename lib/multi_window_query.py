@@ -8,7 +8,7 @@ import pandas as pd
 import time
 
 class MultiWindowQuery:
-    def __init__(self, pdb_code, winsizes, pdbmine_url, projects_dir='ml_data', casp_protein_id=None):
+    def __init__(self, pdb_code, winsizes, pdbmine_url, projects_dir='ml_data', casp_protein_id=None, match_outdir='cache'):
         self.pdb_code = pdb_code
         self.casp_protein_id = casp_protein_id if casp_protein_id else pdb_code
         self.winsizes = winsizes
@@ -32,7 +32,7 @@ class MultiWindowQuery:
         for i,winsize in enumerate(self.winsizes):
             self.queries.append(PDBMineQuery(
                 self.casp_protein_id, self.pdb_code, winsize, self.pdbmine_url,
-                self.sequence, 1
+                self.sequence, 1, match_outdir
             ))
             self.queries[-1].set_get_subseq(self.winsize_ctxt)
         self.queried = False
