@@ -321,7 +321,7 @@ class DihedralAdherence():
             seq = seq[0]
         plot_one_dist_3d(self, seq, bw_method, fn)
 
-    def plot_da_for_seq(self, seq=None, i=None, pred_id=None, pred_name=None, axlims=None, bw_method=None, fn=None, fill=False):
+    def plot_da_for_seq(self, seq=None, i=None, pred_id=None, pred_name=None, axlims=None, bw_method=None, fn=None, fill=False, scatter=False):
         if i is None and seq is None:
             seq = seq or self.overlapping_seqs[0]
         elif i is not None:
@@ -332,7 +332,7 @@ class DihedralAdherence():
                 raise ValueError(f'No sequence found for position {i}')
             seq = seq[0]
         pred_id = pred_id or self.protein_ids[0]
-        plot_da_for_seq(self, seq, pred_id, pred_name, bw_method, axlims, fn, fill)
+        plot_da_for_seq(self, seq, pred_id, pred_name, bw_method, axlims, fn, fill, scatter)
     
     def plot_res_vs_da(self, pred_id=None, pred_name=None, highlight_res=None, limit_quantile=None, legend_loc='upper right', fn=None, text_loc='right'):
         highlight_res = highlight_res or []
