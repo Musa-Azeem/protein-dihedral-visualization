@@ -5,6 +5,7 @@ from Bio.Align import PairwiseAligner
 from scipy.stats import gaussian_kde
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
+from scipy.stats import pearsonr, linregress
 import pandas as pd
 import numpy as np
 from lib.constants import AMINO_ACID_CODES
@@ -281,6 +282,16 @@ def compute_rmsd(fnA, fnB, startA=None, endA=None, startB=None, endB=None, print
         dist = np.sum((atomsA - atomsB)**2)
         return sup.rms, len(atomsA), dist
     return sup.rms
+
+def test_correlation(ins):
+    grouped_preds = ins.grouped_preds.dropna(subset=['da', 'GDT_TS'])
+    regr = linregress(grouped_preds.da, grouped_preds.GDT_TS)
+    print(f'LinRegr - Slope: {regr.slope}, Intercept: {regr.intercept}', 'R-squared:', regr.rvalue**2, 'p-value:', regr.pvalue)
+
+    corr, pval = pearsonr(grouped_preds.da, grouped_preds.GDT_TS)
+    print(f'Pearson Correlation: {corr}, p-value: {pval}')
+
+    return (regr.rvalue**2, corr)
 
 def get_find_target(ins):
     xray_da_fn = 'xray_phi_psi_da.csv'

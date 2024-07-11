@@ -228,25 +228,23 @@ def plot_res_vs_da(ins, pred_id, pred_name, highlight_res, limit_quantile, legen
 
     return both
 
-def plot_da_vs_rmsd(ins, axlims, fn):
-    regr = linregress(ins.grouped_preds.rms_pred, ins.grouped_preds.RMS_CA)
+def plot_da_vs_gdt(ins, axlims, fn):
+    regr = linregress(ins.grouped_preds.gdt_pred, ins.grouped_preds.GDT_TS)
 
     sns.set_theme(style="whitegrid")
     sns.set_palette("pastel")
     fig, ax = plt.subplots(figsize=(8, 8))
 
-    sns.scatterplot(data=ins.grouped_preds, x='rms_pred', y='RMS_CA', ax=ax, marker='o', s=25, edgecolor='b', legend=True)
+    sns.scatterplot(data=ins.grouped_preds, x='gdt_pred', y='GDT_TS', ax=ax, marker='o', s=25, edgecolor='b', legend=True)
     ax.plot(
-        np.linspace(0, ins.grouped_preds.rms_pred.max() + 5, 100), 
-        regr.intercept + regr.slope * np.linspace(0, ins.grouped_preds.rms_pred.max() + 5, 100), 
+        np.linspace(0, ins.grouped_preds.gdt_pred.max() + 5, 100), 
+        regr.intercept + regr.slope * np.linspace(0, ins.grouped_preds.gdt_pred.max() + 5, 100), 
         color='red', lw=2, label='Regression Line'
     )
-    # sns.regplot(data=ins.grouped_preds, x='rms_pred', y='RMS_CA', ax=ax, scatter=False, 
-    #             color='red', ci=False, label='Regression Line', line_kws={'lw':2})
 
     ax.set_xlabel('Regression-Aggregated Dihedral Adherence Score', fontsize=14, labelpad=15)
-    ax.set_ylabel('Prediction Backbone RMSD', fontsize=14, labelpad=15)
-    ax.set_title(r'Aggregated Dihedral Adherence vs RMSD ($C_{\alpha}$) for each prediction', fontsize=16, pad=20)
+    ax.set_ylabel('Prediction GDT', fontsize=14, labelpad=15)
+    ax.set_title(r'Aggregated Dihedral Adherence vs GDT ($C_{\alpha}$) for each prediction', fontsize=16, pad=20)
     ax.text(0.85, 0.10, r'$R^2$='+f'{ins.model.rsquared:.3f}', transform=ax.transAxes, fontsize=12,
             verticalalignment='top', bbox=dict(boxstyle='round,pad=0.5', edgecolor='black', facecolor='white'))
     
@@ -263,26 +261,28 @@ def plot_da_vs_rmsd(ins, axlims, fn):
 
     sns.reset_defaults()
 
-def plot_heatmap(ins, fillna, fn):
+def plot_heatmap(ins, fillna, fillna_row, fn):
     cmap = sns.color_palette("rocket", as_cmap=True)
     fig, ax = plt.subplots(1,1, figsize=(5,5))
     ins.grouped_preds = ins.grouped_preds.sort_values('protein_id')
     ins.grouped_preds_da = ins.grouped_preds_da.sort_index()
     df = ins.grouped_preds_da.copy()
-    df['rmsd'] = ins.grouped_preds['RMS_CA'].values
-    df = df.sort_values('rmsd')
-    af_idx = df.index.get_loc(ins.alphafold_id)
+    df['gdt'] = ins.grouped_preds['GDT_TS'].values
+    df = df.sort_values('gdt', ascending=False)
     # print(ins.grouped_preds[ins.grouped_preds.protein_id == ins.alphafold_id])
     X = df.iloc[:, :-1].values
-    X = np.where(np.isnan(X), np.nanmean(X,axis=0), X)
+    if fillna_row:
+        X = np.where(np.isnan(X), np.nanmean(X,axis=0), X)
     if fillna:
         X[np.isnan(X)] = 0 # for entire column nan
     sns.heatmap(X, ax=ax, cmap=cmap)
 
-    ax.set_xlabel('Residue Position', fontsize=10)
-    ax.set_yticks([af_idx + 0.5])
-    ax.set_yticklabels([f'Alpha\nFold'], fontsize=7)
+    # af_idx = df.index.get_loc(ins.alphafold_id)
+    # ax.set_yticks([af_idx + 0.5])
+    # ax.set_yticklabels([f'Alpha\nFold'], fontsize=7)
+    
     ax.set_ylabel('Prediction', fontsize=10)
+    ax.set_xlabel('Residue Position', fontsize=10)
     ax.set_xticks([])
     ax.set_xticklabels([])
 
@@ -297,13 +297,13 @@ def plot_heatmap(ins, fillna, fn):
     plt.show()
 
 
-def plot_da_vs_rmsd_simple(ins, axlims, fn):
-    grouped_preds = ins.grouped_preds.dropna()
-    # grouped_preds = grouped_preds[grouped_preds.RMS_CA < 40]
-    # grouped_preds = grouped_preds[grouped_preds.RMS_CA < 30]
-    # regr = linregress(grouped_preds.da, grouped_preds.RMS_CA)
+def plot_da_vs_gdt_simple(ins, axlims, fn):
+    grouped_preds = ins.grouped_preds.dropna(subset=['da','GDT_TS'])
+    # grouped_preds = grouped_preds[grouped_preds.GDT_TS < 40]
+    # grouped_preds = grouped_preds[grouped_preds.GDT_TS < 30]
+    # regr = linregress(grouped_preds.da, grouped_preds.GDT_TS)
     regr = linregress(grouped_preds.da, grouped_preds.GDT_TS)
-    print(f'Slope: {regr.slope}, Intercept: {regr.intercept}')
+    print(f'Slope: {regr.slope}, Intercept: {regr.intercept}', 'R-squared:', regr.rvalue**2)
 
     af = grouped_preds[grouped_preds.protein_id == ins.alphafold_id]
     xray_da = ins.xray_phi_psi.da.mean()
@@ -312,15 +312,10 @@ def plot_da_vs_rmsd_simple(ins, axlims, fn):
     sns.set_theme(style="whitegrid")
     sns.set_palette("pastel")
     fig, ax = plt.subplots(figsize=(8, 6.5))
-    # sns.scatterplot(data=grouped_preds, x='da', y='RMS_CA', ax=ax, marker='o', s=25, edgecolor='b', legend=True)
-    # ax.scatter(af.da, af.RMS_CA, color='red', marker='x', label='AlphaFold', zorder=10)
-    
-    
+
     sns.scatterplot(data=grouped_preds, x='da', y='GDT_TS', ax=ax, marker='o', s=25, edgecolor='b', legend=True)
     ax.scatter(af.da, af.GDT_TS, color='red', marker='x', label='AlphaFold', zorder=10)
-    
-    
-    ax.scatter(xray_da, 0, color='green', marker='x', label='X-ray', zorder=10)
+    ax.scatter(xray_da, 100, color='green', marker='x', label='X-ray', zorder=10)
     ax.plot(
         np.linspace(0, grouped_preds.da.max() + 5, 100), 
         regr.intercept + regr.slope * np.linspace(0, grouped_preds.da.max() + 5, 100), 
@@ -328,23 +323,25 @@ def plot_da_vs_rmsd_simple(ins, axlims, fn):
     )
 
     ax.set_xlabel('Total Dihedral Adherence Score', fontsize=14, labelpad=15)
-    ax.set_ylabel('Prediction Backbone RMSD', fontsize=14, labelpad=15)
-    ax.set_title(r'RMSD ($C_{\alpha}$) vs Total Dihedral Adherence for Each Prediction of '+ins.pdb_code, fontsize=16, pad=20)
+    ax.set_ylabel('Prediction GDT', fontsize=14, labelpad=15)
+    ax.set_title(r'GDT ($C_{\alpha}$) vs Total Dihedral Adherence for Each Prediction of '+ins.pdb_code, fontsize=16, pad=20)
     ax.text(0.83, 0.10, r'$R^2$='+f'{regr.rvalue**2:.3f}', transform=ax.transAxes, fontsize=14,
             verticalalignment='top', bbox=dict(boxstyle='round,pad=0.5', edgecolor='black', facecolor='white'))
     if regr.intercept > 0:
         s = f'y = {regr.slope:.1E}x + {regr.intercept:.1f}'
     else:
         s = f'y = {regr.slope:.1E}x - {-regr.intercept:.1f}'
-    ax.text(.025,.76, s, transform=ax.transAxes, fontsize=12, color='red',
+    ax.text(.72,.76, s, transform=ax.transAxes, fontsize=12, color='red',
             bbox=dict(boxstyle='round,pad=0.4', edgecolor='red', facecolor='white'))
     if axlims:
         ax.set_xlim(axlims[0][0], axlims[0][1])
         ax.set_ylim(axlims[1][0], axlims[1][1])
     else:
-        ax.set_xlim(0, grouped_preds.da.max() + 5)
-        # ax.set_ylim(-0.5, grouped_preds.RMS_CA.max() + 5)
-        ax.set_ylim(-0.5, grouped_preds.GDT_TS.max() + 5)
+        # ax.set_xlim(0, grouped_preds.da.max() + 5)
+        ax.set_xlim(0, max(100, grouped_preds.da.max() + 5))
+        # ax.set_ylim(-0.5, grouped_preds.GDT_TS.max() + 5)
+        # ax.set_ylim(-0.5, grouped_preds.GDT_TS.max() + 5)
+        ax.set_ylim(0, 105)
 
     plt.legend(fontsize=12)
     plt.tight_layout()

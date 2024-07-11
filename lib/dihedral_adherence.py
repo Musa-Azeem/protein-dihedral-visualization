@@ -8,7 +8,7 @@ from lib.retrieve_data import (
     retrieve_casp_results,
     retrieve_alphafold_prediction
 )
-from lib.utils import get_seq_funcs, check_alignment, compute_rmsd, get_find_target
+from lib.utils import get_seq_funcs, check_alignment, compute_rmsd, get_find_target, test_correlation
 from lib.modules import (
     get_phi_psi_xray,
     get_phi_psi_predictions,
@@ -22,9 +22,9 @@ from lib.plotting import (
     plot_one_dist_3d,
     plot_da_for_seq,
     plot_res_vs_da,
-    plot_da_vs_rmsd,
+    plot_da_vs_gdt,
     plot_heatmap,
-    plot_da_vs_rmsd_simple,
+    plot_da_vs_gdt_simple,
     plot_res_vs_da_1plot,
     plot_dist_kde
 )
@@ -304,6 +304,12 @@ class DihedralAdherence():
             print(f'Mean RMSD: {np.mean(rmsds):.3f}')
             return rmsds, n, rmsd_inner
     
+    def test_correlation(self):
+        if not 'da' in self.phi_psi_predictions.columns:
+            print('No DA data available. Run compute_das() or load_results_da() first')
+            return
+        return test_correlation(self)
+    
     def plot_one_dist(self, seq=None, pred_id=None, pred_name=None, axlims=None, bw_method=-1, fn=None):
         seq = seq or self.overlapping_seqs[0]
         pred_id = pred_id or self.protein_ids[0]
@@ -350,27 +356,27 @@ class DihedralAdherence():
         protein_id = pred_id or self.protein_ids[0]
         return plot_res_vs_da_1plot(self, protein_id, pred_name, highlight_res, limit_quantile, legend_loc, fn, text_loc, rmsds)
     
-    def plot_da_vs_rmsd(self, axlims=None, fn=None):
+    def plot_da_vs_gdt(self, axlims=None, fn=None):
         if not 'da' in self.phi_psi_predictions.columns:
             print('No DA data available. Run compute_das() or load_results_da() first')
             return
-        if not 'rms_pred' in self.grouped_preds.columns:
+        if not 'gdt_pred' in self.grouped_preds.columns:
             self.fit_model()
         else:
             print(f'Model R-squared: {self.model.rsquared:.6f}, Adj R-squared: {self.model.rsquared_adj:.6f}, p-value: {self.model.f_pvalue}')
-        plot_da_vs_rmsd(self, axlims, fn)
+        plot_da_vs_gdt(self, axlims, fn)
     
-    def plot_da_vs_rmsd_simple(self, axlims=None, fn=None):
+    def plot_da_vs_gdt_simple(self, axlims=None, fn=None):
         if not 'da' in self.phi_psi_predictions.columns:
             print('No DA data available. Run compute_das() or load_results_da() first')
             return
-        plot_da_vs_rmsd_simple(self, axlims, fn)
+        plot_da_vs_gdt_simple(self, axlims, fn)
     
-    def plot_heatmap(self, fillna=False, fn=None):
+    def plot_heatmap(self, fillna=False, fillna_row=True, fn=None):
         if not 'da' in self.phi_psi_predictions.columns:
             print('No DA data available. Run compute_das() or load_results_da() first')
             return
-        plot_heatmap(self, fillna, fn)
+        plot_heatmap(self, fillna, fillna_row, fn)
     
     def plot_dist_kde(self, pred_id=None, percentile=None, fn=None):
         if not 'da' in self.phi_psi_predictions.columns:
@@ -383,6 +389,9 @@ class DihedralAdherence():
     def get_id(self, group_id):
         return f'{self.casp_protein_id}TS{group_id}'
     def _get_grouped_preds(self):
+        # GDT_TS - GlobalDistanceTest_TotalScore
+        # GDT_TS = (GDT_P1 + GDT_P2 + GDT_P4 + GDT_P8)/4,
+        # where GDT_Pn denotes percent of residues under distance cutoff <= nÅ
         self.phi_psi_predictions['da_na'] = self.phi_psi_predictions.da.isna()
         def agg_da(x):
             x = x[x < x.quantile(self.quantile)]
@@ -395,7 +404,7 @@ class DihedralAdherence():
         )
         self.grouped_preds = pd.merge(
             self.grouped_preds,
-            self.results[['Model', 'RMS_CA', 'GDT_TS']],
+            self.results[['Model', 'GDT_TS']],
             left_on='protein_id',
             right_on='Model',
             how='inner'
@@ -404,5 +413,5 @@ class DihedralAdherence():
         self.grouped_preds_da = self.phi_psi_predictions.pivot(index='protein_id', columns='pos', values='da')
 
     def filter_nas(self, quantile=0.9):
-        self.grouped_preds = self.grouped_preds[self.grouped_preds.da_na < self.grouped_preds.da_na.quantile(quantile)]
+        self.grouped_preds = self.grouped_preds[self.grouped_preds.da_na <= self.grouped_preds.da_na.quantile(quantile)]
         self.grouped_preds_da = self.grouped_preds_da.loc[self.grouped_preds.protein_id]
