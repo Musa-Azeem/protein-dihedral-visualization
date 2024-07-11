@@ -395,7 +395,7 @@ class DihedralAdherence():
         )
         self.grouped_preds = pd.merge(
             self.grouped_preds,
-            self.results[['Model', 'RMS_CA']],
+            self.results[['Model', 'RMS_CA', 'GDT_TS']],
             left_on='protein_id',
             right_on='Model',
             how='inner'

@@ -301,7 +301,8 @@ def plot_da_vs_rmsd_simple(ins, axlims, fn):
     grouped_preds = ins.grouped_preds.dropna()
     # grouped_preds = grouped_preds[grouped_preds.RMS_CA < 40]
     # grouped_preds = grouped_preds[grouped_preds.RMS_CA < 30]
-    regr = linregress(grouped_preds.da, grouped_preds.RMS_CA)
+    # regr = linregress(grouped_preds.da, grouped_preds.RMS_CA)
+    regr = linregress(grouped_preds.da, grouped_preds.GDT_TS)
     print(f'Slope: {regr.slope}, Intercept: {regr.intercept}')
 
     af = grouped_preds[grouped_preds.protein_id == ins.alphafold_id]
@@ -311,8 +312,14 @@ def plot_da_vs_rmsd_simple(ins, axlims, fn):
     sns.set_theme(style="whitegrid")
     sns.set_palette("pastel")
     fig, ax = plt.subplots(figsize=(8, 6.5))
-    sns.scatterplot(data=grouped_preds, x='da', y='RMS_CA', ax=ax, marker='o', s=25, edgecolor='b', legend=True)
-    ax.scatter(af.da, af.RMS_CA, color='red', marker='x', label='AlphaFold', zorder=10)
+    # sns.scatterplot(data=grouped_preds, x='da', y='RMS_CA', ax=ax, marker='o', s=25, edgecolor='b', legend=True)
+    # ax.scatter(af.da, af.RMS_CA, color='red', marker='x', label='AlphaFold', zorder=10)
+    
+    
+    sns.scatterplot(data=grouped_preds, x='da', y='GDT_TS', ax=ax, marker='o', s=25, edgecolor='b', legend=True)
+    ax.scatter(af.da, af.GDT_TS, color='red', marker='x', label='AlphaFold', zorder=10)
+    
+    
     ax.scatter(xray_da, 0, color='green', marker='x', label='X-ray', zorder=10)
     ax.plot(
         np.linspace(0, grouped_preds.da.max() + 5, 100), 
@@ -336,7 +343,8 @@ def plot_da_vs_rmsd_simple(ins, axlims, fn):
         ax.set_ylim(axlims[1][0], axlims[1][1])
     else:
         ax.set_xlim(0, grouped_preds.da.max() + 5)
-        ax.set_ylim(-0.5, grouped_preds.RMS_CA.max() + 5)
+        # ax.set_ylim(-0.5, grouped_preds.RMS_CA.max() + 5)
+        ax.set_ylim(-0.5, grouped_preds.GDT_TS.max() + 5)
 
     plt.legend(fontsize=12)
     plt.tight_layout()
