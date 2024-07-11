@@ -83,3 +83,16 @@ def seq_filter(ins):
     ins.phi_psi_predictions = ins.phi_psi_predictions[
         ins.phi_psi_predictions.protein_id.isin(grouped.index)
     ]
+
+def get_phi_psi_af(ins, replace=False):
+    if not (ins.outdir / 'af_phi_psi.csv').exists() or replace:
+        print('Computing phi-psi for alphafold')
+        parser = PDBParser()
+        af_structure = parser.get_structure(ins.pdb_code, ins.af_fn)
+        af_phi_psi = get_phi_psi_for_structure(ins, af_structure, ins.pdb_code)
+        af_phi_psi = pd.DataFrame(af_phi_psi, columns=['pos', 'seq_ctxt', 'res', 'phi', 'psi', 'protein_id'])
+        af_phi_psi.to_csv(ins.outdir / 'af_phi_psi.csv', index=False)
+    else:
+        af_phi_psi = pd.read_csv(ins.outdir / 'af_phi_psi.csv')
+
+    return af_phi_psi

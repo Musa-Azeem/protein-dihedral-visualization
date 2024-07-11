@@ -8,6 +8,9 @@ from sklearn.metrics import silhouette_score
 import pandas as pd
 import numpy as np
 from lib.constants import AMINO_ACID_CODES
+from lib.ml.utils import get_ml_pred
+from pathlib import Path
+from sklearn.cluster import KMeans, MeanShift, estimate_bandwidth
 
 def get_seq_funcs(winsize_ctxt):
     def get_center_idx():
@@ -45,8 +48,11 @@ def get_phi_psi_dist(queries, seq):
     for q in queries:
         inner_seq = q.get_subseq(seq)
         phi_psi_dist.append(q.results[q.results.seq == inner_seq][['phi', 'psi', 'weight']])
+        phi_psi_dist[-1]['winsize'] = q.winsize
         info.append((q.winsize, inner_seq, phi_psi_dist[-1].shape[0], q.weight))
-    return pd.concat(phi_psi_dist), info
+    phi_psi_dist = pd.concat(phi_psi_dist)
+    phi_psi_dist['seq'] = seq
+    return phi_psi_dist, info
 
 def check_alignment(xray_fn, pred_fn):
     # Check alignment of casp prediction and x-ray structure
@@ -69,7 +75,7 @@ def check_alignment(xray_fn, pred_fn):
             if t2-t1 > 5:
                 print(f'Match of length: {t2-t1} residues at position t={t1}, q={q1}')
 
-def find_kdepeak(phi_psi_dist, bw_method):
+def find_kdepeak(phi_psi_dist, bw_method, return_prob=False):
     # Find probability of each point
     phi_psi_dist = phi_psi_dist.loc[~phi_psi_dist[['phi', 'psi']].isna().any(axis=1)]
 
@@ -78,10 +84,137 @@ def find_kdepeak(phi_psi_dist, bw_method):
         weights=phi_psi_dist['weight'], 
         bw_method=bw_method
     )
-    kdepeak = phi_psi_dist.iloc[kernel(phi_psi_dist[['phi', 'psi']].values.T).argmax()]
-    # phi_psi_dist['prob'] = kernel(phi_psi_dist[['phi', 'psi']].values.T)
+    phi_grid, psi_grid = np.meshgrid(np.linspace(-180, 180, 360), np.linspace(-180, 180, 360))
+    grid = np.vstack([phi_grid.ravel(), psi_grid.ravel()])
+    kde = kernel(grid).reshape(phi_grid.shape)
+    kdepeak = grid[:,kde.argmax()]
+    kdepeak = pd.Series({'phi': kdepeak[0], 'psi': kdepeak[1]})
 
+    if return_prob:
+        return kdepeak, kde.max()
     return kdepeak
+
+def find_kdepeak_w(phi_psi_dist, bw_method, return_prob=False):
+    # Find probability of each point
+    phi_psi_dist = phi_psi_dist.loc[~phi_psi_dist[['phi', 'psi']].isna().any(axis=1)].copy()
+    n_windows = phi_psi_dist.winsize.nunique()
+    weights = phi_psi_dist['weight'].unique()
+    # print(n_windows, weights)
+    # for now, hard code weights for winsizes 4,5,6,7
+    phi_psi_dist['weight'] = phi_psi_dist['weight'].astype(float)
+    match(n_windows):
+        case 1:
+            # only first window size
+            print('\tWeights: 4:1')
+            phi_psi_dist['weight'] = 1.
+        case 2:
+            # 4 and 5
+            print('\tWeights: 4:0, 5:1')
+            phi_psi_dist.loc[phi_psi_dist.weight == weights[0], 'weight'] = 0.01
+            phi_psi_dist.loc[phi_psi_dist.weight == weights[1], 'weight'] = 0.99 
+        case 3:
+            # 4, 5, 6
+            print('\tWeights: 4:0, 5:0.2, 6:0.8')
+            phi_psi_dist.loc[phi_psi_dist.weight == weights[0], 'weight'] = 0.01
+            phi_psi_dist.loc[phi_psi_dist.weight == weights[1], 'weight'] = 0.195
+            phi_psi_dist.loc[phi_psi_dist.weight == weights[2], 'weight'] = 0.795
+        case 4:
+            # 4, 5, 6, 7
+            print('\tWeights: 4:0, 5:0, 6:0.2, 7:0.8')
+            phi_psi_dist.loc[phi_psi_dist.weight == weights[0], 'weight'] = 0.01
+            phi_psi_dist.loc[phi_psi_dist.weight == weights[1], 'weight'] = 0.01
+            phi_psi_dist.loc[phi_psi_dist.weight == weights[2], 'weight'] = 0.19
+            phi_psi_dist.loc[phi_psi_dist.weight == weights[3], 'weight'] = 0.79
+    # print(phi_psi_dist.groupby('winsize').mean(numeric_only=True))
+    kernel = gaussian_kde(
+        phi_psi_dist[['phi','psi']].T, 
+        weights=phi_psi_dist['weight'], 
+        bw_method=bw_method
+    )
+    phi_grid, psi_grid = np.meshgrid(np.linspace(-180, 180, 360), np.linspace(-180, 180, 360))
+    grid = np.vstack([phi_grid.ravel(), psi_grid.ravel()])
+    kde = kernel(grid).reshape(phi_grid.shape)
+    kdepeak = grid[:,kde.argmax()]
+    kdepeak = pd.Series({'phi': kdepeak[0], 'psi': kdepeak[1]})
+
+    if return_prob:
+        return kdepeak, kde.max()
+    return kdepeak
+
+def find_kdepeak_af(phi_psi_dist, bw_method, af, return_peaks=False, find_peak=find_kdepeak):
+    # Find probability of each point
+    if af.shape[0] == 0:
+        print('\tNo AlphaFold prediction - Using ordinary KDE')
+        if return_peaks:
+            peak = find_peak(phi_psi_dist, bw_method)
+            return peak, peak, None
+        return find_peak(phi_psi_dist, bw_method)
+
+    af = af[['phi', 'psi']].values[0]
+
+    phi_psi_dist = phi_psi_dist.loc[~phi_psi_dist[['phi', 'psi']].isna().any(axis=1)]
+
+    # Find clusters
+    bandwidth = 100
+    ms = MeanShift(bandwidth=bandwidth, bin_seeding=True)
+    ms.fit(phi_psi_dist[['phi','psi']])
+    phi_psi_dist['cluster'] = ms.labels_
+
+    cluster_counts = phi_psi_dist.groupby('cluster').size()
+    phi_psi_dist['cluster'] = phi_psi_dist['cluster'].apply(lambda x: x if cluster_counts[x] > 4 else -1)
+
+    # find kdepeak for each cluster and entire dist
+    kdepeak = find_peak(phi_psi_dist, bw_method)
+    cluster_peaks = []
+    for i in phi_psi_dist.cluster.unique():
+        if i == -1:
+            continue
+        kdepeak_c = find_peak(phi_psi_dist[phi_psi_dist.cluster == i], bw_method)
+        cluster_peaks.append(kdepeak_c)
+    print(f'\tFound {len(cluster_peaks)} Clusters')
+    # Choose peak that is closest to AlphaFold prediction
+    targets = np.array([kdepeak.values] + [k.values for k in cluster_peaks])
+    dists = calc_da(af, targets)
+    argmin = dists.argmin()
+    if argmin == 0:
+        print('\tKDEPEAK: Using kdepeak of entire distribution')
+    else:
+        print(f'\tKDEPEAK: Using kdepeak of cluster {argmin - 1}')
+    target = targets[argmin]
+    target = pd.Series({'phi': target[0], 'psi': target[1]})
+
+    if return_peaks:
+        return target, kdepeak, cluster_peaks
+    return target
+
+def get_ml_pred_wrapper(phi_psi_dist, winsizes, res, af, ml, bw_method):
+    # Find probability of each point
+    if af.shape[0] == 0:
+        print('\tNo AlphaFold prediction - Using ordinary KDE')
+        return find_kdepeak(phi_psi_dist, bw_method)
+    af = af[['phi', 'psi']].values[0]
+    phi_psi_dist = phi_psi_dist.loc[~phi_psi_dist[['phi', 'psi']].isna().any(axis=1)]
+    winsizes = phi_psi_dist.winsize.unique()
+    peaks = []
+    for w in [4,5,6,7]:
+        x = phi_psi_dist.loc[phi_psi_dist.winsize == w, ['phi', 'psi']].values.T
+        if x.shape[1] < 3:
+            if x.shape[1] == 0:
+                peaks.append([0,0])
+            else:
+                peaks.append(x.mean(axis=1).tolist())
+            continue
+        kde = gaussian_kde(x, bw_method=0.5)
+        # print(kde.cho_cov)
+        phi_grid, psi_grid = np.meshgrid(np.linspace(-180, 180, 180), np.linspace(-180, 180, 180))
+        grid = np.vstack([phi_grid.ravel(), psi_grid.ravel()])
+        probs = kde(grid).reshape(phi_grid.shape)
+        # print(probs)
+        kdepeak = grid[:,probs.argmax()]
+        peaks.append(kdepeak.tolist())
+    peaks = np.array(peaks)
+    pred = get_ml_pred(peaks, res, af, ml)
+    return pd.Series({'phi': pred[0], 'psi': pred[1]})
 
 def calc_da_for_one(kdepeak, phi_psi):
     diff = lambda x1, x2: min(abs(x1 - x2), 360 - abs(x1 - x2))
@@ -148,3 +281,36 @@ def compute_rmsd(fnA, fnB, startA=None, endA=None, startB=None, endB=None, print
         dist = np.sum((atomsA - atomsB)**2)
         return sup.rms, len(atomsA), dist
     return sup.rms
+
+def get_find_target(ins):
+    xray_da_fn = 'xray_phi_psi_da.csv'
+    pred_da_fn = 'phi_psi_predictions_da.csv'
+    def get_af(seq):
+        if ins.af_phi_psi is not None:
+            return ins.af_phi_psi[ins.af_phi_psi.seq_ctxt == seq]
+        else:
+            return ins.phi_psi_predictions[(ins.phi_psi_predictions.protein_id == ins.alphafold_id) & (ins.phi_psi_predictions.seq_ctxt == seq)]
+    match(ins.mode):
+        case 'kde':
+            def find_target_wrapper(phi_psi_dist, bw_method):
+                return find_kdepeak(phi_psi_dist, bw_method)
+        case 'ml':
+            xray_da_fn = 'xray_phi_psi_da_ml.csv'
+            pred_da_fn = 'phi_psi_predictions_da_ml.csv'
+            def find_target_wrapper(phi_psi_dist, bw_method):
+                af = get_af(phi_psi_dist.seq.values[0])
+                res = ins.get_center(phi_psi_dist.seq.values[0])
+                return get_ml_pred_wrapper(phi_psi_dist, ins.winsizes, res, af, ins.model, bw_method)
+        case 'kde_af':
+            xray_da_fn = 'xray_phi_psi_da_af.csv'
+            pred_da_fn = 'phi_psi_predictions_da_af.csv'
+            def find_target_wrapper(phi_psi_dist, bw_method):
+                af = get_af(phi_psi_dist.seq.values[0])
+                return find_kdepeak_af(phi_psi_dist, bw_method, af)
+        case 'weighted_kde_af':
+            xray_da_fn = 'xray_phi_psi_da_afw.csv'
+            pred_da_fn = 'phi_psi_predictions_da_afw.csv'
+            def find_target_wrapper(phi_psi_dist, bw_method):
+                af = get_af(phi_psi_dist.seq.values[0])
+                return find_kdepeak_af(phi_psi_dist, bw_method, af, find_peak=find_kdepeak_w)
+    return find_target_wrapper, Path(xray_da_fn), Path(pred_da_fn)

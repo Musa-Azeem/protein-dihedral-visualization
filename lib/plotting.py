@@ -6,7 +6,7 @@ from scipy.stats import gaussian_kde
 import matplotlib.patches as mpatches
 from matplotlib.ticker import FuncFormatter
 from scipy.stats import linregress
-from lib.utils import find_kdepeak, calc_da, calc_da_for_one, get_phi_psi_dist
+from lib.utils import calc_da, calc_da_for_one, get_phi_psi_dist
 
 colors = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple', 'tab:brown', 'tab:pink', 'tab:gray', 'tab:olive', 'tab:cyan']
 
@@ -28,14 +28,14 @@ def plot_one_dist(ins, seq, pred_id, pred_name, axlims, bw_method, fn):
     for i in info:
         print(f'Win {i[0]}: {i[1]} - {i[2]} samples')
 
-    kdepeak = find_kdepeak(phi_psi_dist, bw_method)
+    target = ins.find_target(phi_psi_dist, bw_method=bw_method)
 
     fig, ax = plt.subplots(figsize=(7,5))
     sns.kdeplot(data=phi_psi_dist, x='phi', y='psi', weights='weight', ax=ax, fill=True, color=colors[0], bw_method=bw_method)
     ax.scatter(xray_phi_psi_seq.phi, xray_phi_psi_seq.psi, marker='o', color=colors[1], label='X-ray', zorder=10)
     ax.scatter(phi_psi_pred.phi, phi_psi_pred.psi, marker='o', color=colors[2], label=f'{pred_name} Prediction', zorder=10)
     ax.scatter(phi_psi_alphafold.phi, phi_psi_alphafold.psi, marker='o', color=colors[4], label='AlphaFold', zorder=10)
-    ax.scatter(kdepeak.phi, kdepeak.psi, color='red', marker='x', label='KDE Peak', zorder=20)
+    ax.scatter(target.phi, target.psi, color='red', marker='x', label='KDE Peak', zorder=20)
     sns.scatterplot(data=preds, x='phi', y='psi', ax=ax, color='black', zorder=5, alpha=0.2, marker='.')
     ax.legend(loc='lower left')
 
@@ -86,10 +86,11 @@ def plot_one_dist_3d(ins, seq, bw_method, fn):
         plt.savefig(fn, bbox_inches='tight', dpi=300)
     plt.show()
 
-def plot_da_for_seq(ins, seq, pred_id, pred_name, bw_method, axlims, fn, fill):
+def plot_da_for_seq(ins, seq, pred_id, pred_name, bw_method, axlims, fn, fill, scatter):
     pred_name = pred_name or pred_id[5:]
     bw_method = bw_method or ins.bw_method
     phi_psi_dist, info = get_phi_psi_dist(ins.queries, seq)
+    print(phi_psi_dist.describe())
     xray = ins.xray_phi_psi[ins.xray_phi_psi.seq_ctxt == seq]
     pred = ins.phi_psi_predictions[(ins.phi_psi_predictions.protein_id == pred_id) & (ins.phi_psi_predictions.seq_ctxt == seq)]
     preds = ins.phi_psi_predictions[ins.phi_psi_predictions.seq_ctxt == seq]
@@ -111,15 +112,15 @@ def plot_da_for_seq(ins, seq, pred_id, pred_name, bw_method, axlims, fn, fill):
     for i in info:
         print(f'\tWin {i[0]}: {i[1]} - {i[2]} samples')
 
-    kdepeak = find_kdepeak(phi_psi_dist, bw_method)
+    target = ins.find_target(phi_psi_dist, bw_method=bw_method)
 
     # Mahalanobis distance to most common cluster
-    da_xray = calc_da_for_one(kdepeak[['phi', 'psi']].values, xray[['phi','psi']].values[0])
-    da_pred = calc_da_for_one(kdepeak[['phi', 'psi']].values, pred[['phi','psi']].values[0])
-    da_alphafold = calc_da_for_one(kdepeak[['phi', 'psi']].values, alphafold[['phi','psi']].values[0])
-    da_preds = calc_da(kdepeak[['phi', 'psi']].values, preds[['phi','psi']].values)
+    da_xray = calc_da_for_one(target[['phi', 'psi']].values, xray[['phi','psi']].values[0])
+    da_pred = calc_da_for_one(target[['phi', 'psi']].values, pred[['phi','psi']].values[0])
+    da_alphafold = calc_da_for_one(target[['phi', 'psi']].values, alphafold[['phi','psi']].values[0])
+    da_preds = calc_da(target[['phi', 'psi']].values, preds[['phi','psi']].values)
 
-    print(f'KDEpeak:\t ({kdepeak.phi:.02f}, {kdepeak.psi:.02f})')
+    print(f'Ideal:\t ({target.phi:.02f}, {target.psi:.02f})')
     print(f'X-ray[{pos}]:\t ({xray.phi.values[0]:.02f}, {xray.psi.values[0]:.02f}), DA={da_xray:.02f}')
     print(f'{pred_name}[{pred.pos.values[0]}]:\t ({pred.phi.values[0]:.02f}, {pred.psi.values[0]:.02f}), DA={da_pred:.02f}')
     print(f'AlphaFold[{alphafold.pos.values[0]}]:\t ({alphafold.phi.values[0]:.02f}, {alphafold.psi.values[0]:.02f}), DA={da_alphafold:.02f}')
@@ -129,19 +130,21 @@ def plot_da_for_seq(ins, seq, pred_id, pred_name, bw_method, axlims, fn, fill):
     sns.kdeplot(
         data=phi_psi_dist, 
         x='phi', y='psi', weights='weight',
-        ax=ax, levels=8, zorder=0, 
+        ax=ax, zorder=0, 
         fill=fill, color='black'
     )
+    if scatter:
+        sns.scatterplot(data=phi_psi_dist, x='phi', y='psi', ax=ax, hue='winsize', alpha=0.8, zorder=-1)
     ax.scatter(preds.phi, preds.psi, color='black', marker='o', s=5, alpha=0.2, label='All Other CASP-14 Predictions', zorder=1)
     ax.scatter(xray.iloc[0].phi, xray.iloc[0].psi, color=colors[1], marker='o', label='X-ray', zorder=10, s=100)
     ax.scatter(pred.phi, pred.psi,  color=colors[2], marker='o', label=pred_name, zorder=10, s=100)
     ax.scatter(alphafold.phi, alphafold.psi, color=colors[4], marker='o', label='AlphaFold', zorder=10, s=100)
-    ax.scatter(kdepeak.phi, kdepeak.psi, color='red', marker='X', label='KDE Peak', s=200, linewidths=0.1)
+    ax.scatter(target.phi, target.psi, color='red', marker='X', label='KDE Peak', s=200, linewidths=0.1)
 
     # dotted line from each point to mean
-    ax.plot([xray.phi.values[0], kdepeak.phi], [xray.psi.values[0], kdepeak.psi], linestyle='dashed', color=colors[1], zorder=1, linewidth=1)
-    ax.plot([pred.phi.values[0], kdepeak.phi], [pred.psi.values[0], kdepeak.psi], linestyle='dashed', color=colors[2], zorder=1, linewidth=1)
-    ax.plot([alphafold.phi.values[0], kdepeak.phi], [alphafold.psi.values[0], kdepeak.psi], linestyle='dashed', color=colors[4], zorder=1, linewidth=1)
+    ax.plot([xray.phi.values[0], target.phi], [xray.psi.values[0], target.psi], linestyle='dashed', color=colors[1], zorder=1, linewidth=1)
+    ax.plot([pred.phi.values[0], target.phi], [pred.psi.values[0], target.psi], linestyle='dashed', color=colors[2], zorder=1, linewidth=1)
+    ax.plot([alphafold.phi.values[0], target.phi], [alphafold.psi.values[0], target.psi], linestyle='dashed', color=colors[4], zorder=1, linewidth=1)
 
     ax.set_xlabel('Phi', fontsize=12)
     ax.set_ylabel('Psi', fontsize=12)
@@ -296,15 +299,21 @@ def plot_heatmap(ins, fillna, fn):
 
 def plot_da_vs_rmsd_simple(ins, axlims, fn):
     grouped_preds = ins.grouped_preds.dropna()
-    grouped_preds = grouped_preds[grouped_preds.da < 5000]
-    # grouped_preds = grouped_preds[grouped_preds.da < 5000]
+    # grouped_preds = grouped_preds[grouped_preds.RMS_CA < 40]
+    # grouped_preds = grouped_preds[grouped_preds.RMS_CA < 30]
     regr = linregress(grouped_preds.da, grouped_preds.RMS_CA)
-    print(regr.slope, regr.intercept)
+    print(f'Slope: {regr.slope}, Intercept: {regr.intercept}')
+
+    af = grouped_preds[grouped_preds.protein_id == ins.alphafold_id]
+    xray_da = ins.xray_phi_psi.da.mean()
+
 
     sns.set_theme(style="whitegrid")
     sns.set_palette("pastel")
     fig, ax = plt.subplots(figsize=(8, 6.5))
     sns.scatterplot(data=grouped_preds, x='da', y='RMS_CA', ax=ax, marker='o', s=25, edgecolor='b', legend=True)
+    ax.scatter(af.da, af.RMS_CA, color='red', marker='x', label='AlphaFold', zorder=10)
+    ax.scatter(xray_da, 0, color='green', marker='x', label='X-ray', zorder=10)
     ax.plot(
         np.linspace(0, grouped_preds.da.max() + 5, 100), 
         regr.intercept + regr.slope * np.linspace(0, grouped_preds.da.max() + 5, 100), 
@@ -320,11 +329,14 @@ def plot_da_vs_rmsd_simple(ins, axlims, fn):
         s = f'y = {regr.slope:.1E}x + {regr.intercept:.1f}'
     else:
         s = f'y = {regr.slope:.1E}x - {-regr.intercept:.1f}'
-    ax.text(.025,.86, s, transform=ax.transAxes, fontsize=12, color='red',
+    ax.text(.025,.76, s, transform=ax.transAxes, fontsize=12, color='red',
             bbox=dict(boxstyle='round,pad=0.4', edgecolor='red', facecolor='white'))
     if axlims:
         ax.set_xlim(axlims[0][0], axlims[0][1])
         ax.set_ylim(axlims[1][0], axlims[1][1])
+    else:
+        ax.set_xlim(0, grouped_preds.da.max() + 5)
+        ax.set_ylim(-0.5, grouped_preds.RMS_CA.max() + 5)
 
     plt.legend(fontsize=12)
     plt.tight_layout()
@@ -402,3 +414,61 @@ def plot_res_vs_da_1plot(ins, pred_id, pred_name, highlight_res, limit_quantile,
     plt.show()
 
     return both
+
+def plot_dist_kde(ins, pred_id, percentile, fn):
+
+    results = ins.grouped_preds.set_index('protein_id')
+    xray_phi_psi = ins.xray_phi_psi.dropna().copy()
+    xray_phi_psi['rmsd'] = 0
+    # af_phi_psi = ins.phi_psi_predictions[ins.phi_psi_predictions.protein_id == ins.alphafold_id].dropna().copy()
+    # af_phi_psi['rmsd'] = results.loc[ins.alphafold_id].RMS_CA
+
+    other_id = ins.protein_ids[0]
+    other_phi_psi = ins.phi_psi_predictions[ins.phi_psi_predictions.protein_id == other_id].dropna().copy()
+    other_phi_psi['rmsd'] = results.loc[other_id].RMS_CA
+
+    print(f'DA: Xray {xray_phi_psi.da.mean():.2f}, {pred_id} {other_phi_psi.da.mean():.2f}')
+    # print(f'DA: Xray {xray_phi_psi.da.mean():.2f}, AF {af_phi_psi.da.mean():.2f}, {pred_id} {other_phi_psi.da.mean():.2f}')
+    print(f'RMSD: Xray {xray_phi_psi.rmsd.mean():.2f}, {pred_id} {other_phi_psi.rmsd.mean():.2f}')
+    # print(f'RMSD: Xray {xray_phi_psi.rmsd.mean():.2f}, AF {af_phi_psi.rmsd.mean():.2f}, {pred_id} {other_phi_psi.rmsd.mean():.2f}')
+
+    df = pd.concat([
+        xray_phi_psi, 
+        # af_phi_psi.drop('da_na', axis=1),
+        other_phi_psi.drop('da_na', axis=1)
+    ])
+
+    def get_probs(x, da):
+        kde = gaussian_kde(da)
+        p = kde(x)
+        c = np.cumsum(p) / np.sum(p)
+        peak = x[np.argmax(p)]
+        return p, c, peak
+
+    fig, axes = plt.subplots(2, sharex=True, figsize=(10, 5))
+    x = np.linspace(0, df.da.max(), 1000)
+
+    def plot(df, label, color):
+        p, c, peak = get_probs(x, df.da)
+        axes[0].plot(x, p, color=color, label=f'{label} [RMSD={df.rmsd.iloc[0]}], peak at {peak:.2f}')
+        axes[0].fill_between(x, 0, p, alpha=0.2, color=color)
+        axes[0].vlines(peak, 0, p.max(), color=color)
+        perc = x[np.argmax(c > percentile)]
+        suffix = 'st' if ((percentile*100) % 10 == 1 and percentile != 0.11) else 'nd' if ((percentile*100) % 10 == 2 and percentile != 0.12) else 'th'
+        axes[1].plot(x, c, color=color, label=f'{label}, {int(percentile*100)}{suffix} percentile at {perc:.2f}')
+        axes[1].vlines(perc, 0, 1, color=color)
+        axes[1].fill_between(x, 0, c, alpha=0.2)
+
+    colors = sns.color_palette("tab10")
+    plot(xray_phi_psi, 'Xray', colors[0])
+    # plot(af_phi_psi, 'AF', colors[1])
+    plot(other_phi_psi, other_id[7:10], colors[2])
+    axes[0].legend()
+    axes[0].set_ylabel('Density')
+    axes[1].legend(loc='lower right')
+    axes[1].set_xlabel('Dihedral Adherence')
+    axes[1].set_ylabel('Cumulative density')
+    # axes[0].set_xlim(0, 5000)
+    # axes[1].set_xlim(0, 5000)
+    fig.suptitle('Dihedral adherence distribution')
+    plt.show()

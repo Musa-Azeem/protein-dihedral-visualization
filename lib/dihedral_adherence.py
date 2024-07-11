@@ -5,15 +5,17 @@ from lib.retrieve_data import (
     retrieve_target_list, 
     retrieve_pdb_file, 
     retrieve_casp_predictions, 
-    retrieve_casp_results
+    retrieve_casp_results,
+    retrieve_alphafold_prediction
 )
-from lib.utils import get_seq_funcs, check_alignment
+from lib.utils import get_seq_funcs, check_alignment, compute_rmsd, get_find_target
 from lib.modules import (
     get_phi_psi_xray,
     get_phi_psi_predictions,
+    get_phi_psi_af,
     seq_filter,
     get_da_for_all_predictions,
-    fit_linregr
+    fit_linregr,
 )
 from lib.plotting import (
     plot_one_dist,
@@ -23,24 +25,33 @@ from lib.plotting import (
     plot_da_vs_rmsd,
     plot_heatmap,
     plot_da_vs_rmsd_simple,
-    plot_res_vs_da_1plot
+    plot_res_vs_da_1plot,
+    plot_dist_kde
 )
 from lib.constants import AMINO_ACID_CODES, AMINO_ACID_CODES_INV, AMINO_ACID_CODE_NAMES
 import pandas as pd
 import requests
 import math
 from Bio.PDB import PDBParser
-from lib.utils import compute_rmsd
 import warnings
 from scipy.stats import gmean, hmean
+from lib.ml.models import MLPredictor
 
 class DihedralAdherence():
-    def __init__(self, casp_protein_id, winsizes, pdbmine_url, projects_dir='tests', kdews=None):
+    def __init__(
+            self, casp_protein_id, winsizes, pdbmine_url, 
+            projects_dir='tests',
+            kdews=None, mode='kde',
+            model=None, ml_lengths=[4096, 512, 256, 256], weights_file='ml_data/best_model.pt', device='cpu',
+            pdbmine_cache_dir='casp_cache',
+        ):
+        print(f'Initializing {casp_protein_id} ...')
         self.casp_protein_id = casp_protein_id
         self.winsizes = winsizes
         self.winsize_ctxt = winsizes[-1]
         self.pdbmine_url = pdbmine_url
         self.outdir = Path(f'{projects_dir}/{casp_protein_id}_win{"-".join([str(w) for w in winsizes])}')
+        self.pdbmine_cache_dir = Path(pdbmine_cache_dir)
         if self.outdir.exists():
             print('Results already exist')
         else:
@@ -58,11 +69,13 @@ class DihedralAdherence():
         self.results = retrieve_casp_results(casp_protein_id)
         self.xray_fn, self.sequence = retrieve_pdb_file(self.pdb_code)
         self.predictions_dir = retrieve_casp_predictions(casp_protein_id)
+        self.af_fn = retrieve_alphafold_prediction(self.pdb_code)
 
         # Get sequence and sequence context functions
         _, self.get_center, self.get_seq_ctxt = get_seq_funcs(self.winsize_ctxt)
         
         self.xray_phi_psi = None
+        self.af_phi_psi = None
         self.phi_psi_predictions = None
         self.overlapping_seqs = None
         self.seqs = None
@@ -79,10 +92,21 @@ class DihedralAdherence():
         for i,winsize in enumerate(self.winsizes):
             self.queries.append(PDBMineQuery(
                 self.casp_protein_id, self.pdb_code, winsize, self.pdbmine_url,
-                self.sequence, self.kdews[i]
+                self.sequence, self.kdews[i], self.pdbmine_cache_dir
             ))
             self.queries[-1].set_get_subseq(self.winsize_ctxt)
         self.queried = False
+
+        self.mode = mode
+        if model is not None:
+            self.model = model
+        else:
+            self.model = MLPredictor(ml_lengths, device, weights_file)
+        if self.mode == 'ml':
+            self.model.load_weights()
+    
+        self.find_target, self.xray_da_fn, self.pred_da_fn = \
+            get_find_target(self)
 
     def get_sequence(self, start, end, code=1):
         if code == 1:
@@ -116,6 +140,9 @@ class DihedralAdherence():
         # TODO: align pos column of predictions with xray_phi_psi using sequence alignment
         self.xray_phi_psi = get_phi_psi_xray(self, replace)
         self.phi_psi_predictions = get_phi_psi_predictions(self, replace)
+        if self.af_fn is not None:
+            self.af_phi_psi = get_phi_psi_af(self, replace)
+
         if self.queried:
             self.get_results_metadata()
         # filter
@@ -146,7 +173,32 @@ class DihedralAdherence():
         if da_scale is None:
             da_scale = [math.log2(i)+1 for i in self.kdews]
         get_da_for_all_predictions(self, replace, da_scale)
+        # get_da_for_all_predictions_ml(self, replace, da_scale)
         self._get_grouped_preds()
+    
+    @property
+    def n_samples_xray(self):
+        if self.xray_phi_psi is None:
+            return None
+        if not hasattr(self, '_n_samples_xray'):    
+            self._n_samples_xray = pd.DataFrame(
+                list(self.xray_phi_psi.n_samples_list.apply(lambda x: eval(x) if x is not np.nan else [np.nan]*4).values),
+                columns=[w for w in self.winsizes],
+                index=self.xray_phi_psi.seq_ctxt
+            ).assign(seq_ctxt=self.xray_phi_psi.seq_ctxt)
+        return self._n_samples_xray
+    
+    @property
+    def n_samples_pred(self):
+        if self.phi_psi_predictions is None:
+            return None
+        if not hasattr(self, '_n_samples_pred'):
+            self._n_samples_pred = pd.DataFrame(
+                list(self.phi_psi_predictions.n_samples_list.apply(lambda x: eval(x) if x is not np.nan else [np.nan]*4).values),
+                columns=[w for w in self.winsizes],
+                index=self.phi_psi_predictions.seq_ctxt
+            ).assign(seq_ctxt=self.phi_psi_predictions.seq_ctxt)
+        return self._n_samples_pred
 
     def load_results(self):
         for query in self.queries:
@@ -155,6 +207,10 @@ class DihedralAdherence():
         self.queried = True
         self.xray_phi_psi = pd.read_csv(self.outdir / 'xray_phi_psi.csv')
         self.phi_psi_predictions = pd.read_csv(self.outdir / 'phi_psi_predictions.csv')
+        if (self.outdir / 'af_phi_psi.csv').exists():
+            self.af_phi_psi = pd.read_csv(self.outdir / 'af_phi_psi.csv')
+        else:
+            print('No AlphaFold phi-psi data found')
         self.get_results_metadata()
         
     def load_results_da(self):
@@ -164,8 +220,12 @@ class DihedralAdherence():
                 print('WARNING: Weights used to calculate DA are different')
             query.results['weight'] = query.weight
         self.queried = True
-        self.xray_phi_psi = pd.read_csv(self.outdir / 'xray_phi_psi_da.csv')
-        self.phi_psi_predictions = pd.read_csv(self.outdir / 'phi_psi_predictions_da.csv')
+        self.xray_phi_psi = pd.read_csv(self.outdir / self.xray_da_fn)
+        self.phi_psi_predictions = pd.read_csv(self.outdir / self.pred_da_fn)
+        if (self.outdir / 'af_phi_psi.csv').exists():
+            self.af_phi_psi = pd.read_csv(self.outdir / 'af_phi_psi.csv')
+        else:
+            print('No AlphaFold phi-psi data found')
         self.get_results_metadata()
         self._get_grouped_preds()
 
@@ -177,6 +237,8 @@ class DihedralAdherence():
         )
         self.seqs = self.xray_phi_psi.seq_ctxt.unique()
         self.protein_ids = self.phi_psi_predictions.protein_id.unique()
+        if not self.alphafold_id in self.protein_ids:
+            print('No CASP AlphaFold prediction')
         return self.overlapping_seqs, self.seqs, self.protein_ids
     
     def fit_model(self):
@@ -259,7 +321,7 @@ class DihedralAdherence():
             seq = seq[0]
         plot_one_dist_3d(self, seq, bw_method, fn)
 
-    def plot_da_for_seq(self, seq=None, i=None, pred_id=None, pred_name=None, axlims=None, bw_method=None, fn=None, fill=False):
+    def plot_da_for_seq(self, seq=None, i=None, pred_id=None, pred_name=None, axlims=None, bw_method=None, fn=None, fill=False, scatter=False):
         if i is None and seq is None:
             seq = seq or self.overlapping_seqs[0]
         elif i is not None:
@@ -270,7 +332,7 @@ class DihedralAdherence():
                 raise ValueError(f'No sequence found for position {i}')
             seq = seq[0]
         pred_id = pred_id or self.protein_ids[0]
-        plot_da_for_seq(self, seq, pred_id, pred_name, bw_method, axlims, fn, fill)
+        plot_da_for_seq(self, seq, pred_id, pred_name, bw_method, axlims, fn, fill, scatter)
     
     def plot_res_vs_da(self, pred_id=None, pred_name=None, highlight_res=None, limit_quantile=None, legend_loc='upper right', fn=None, text_loc='right'):
         highlight_res = highlight_res or []
@@ -310,13 +372,21 @@ class DihedralAdherence():
             return
         plot_heatmap(self, fillna, fn)
     
+    def plot_dist_kde(self, pred_id=None, percentile=None, fn=None):
+        if not 'da' in self.phi_psi_predictions.columns:
+            print('No DA data available. Run compute_das() or load_results_da() first')
+            return
+        protein_id = pred_id or self.protein_ids[0]
+        percentile = percentile or 0.95
+        plot_dist_kde(self, protein_id, percentile, fn)
+    
     def get_id(self, group_id):
         return f'{self.casp_protein_id}TS{group_id}'
     def _get_grouped_preds(self):
         self.phi_psi_predictions['da_na'] = self.phi_psi_predictions.da.isna()
         def agg_da(x):
             x = x[x < x.quantile(self.quantile)]
-            return x.agg('sum')
+            return x.agg('mean')
         self.grouped_preds = self.phi_psi_predictions.groupby('protein_id', as_index=False).agg(
             # da=('da', lambda x: x[x < x.quantile(self.quantile)].agg('mean')), 
             da=('da', agg_da), 

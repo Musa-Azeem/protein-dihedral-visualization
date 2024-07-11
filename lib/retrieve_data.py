@@ -62,3 +62,31 @@ def retrieve_casp_results(casp_protein_id):
     results = results[results.columns[1:]] # remove line number column
     results['Model'] = results['Model'].apply(lambda x: x.split('-')[0])
     return results
+
+def retrieve_alphafold_prediction(pdb_code):
+    af_dir = Path('alphafold_predictions')
+    response = requests.get(f'https://www.ebi.ac.uk/pdbe/api/mappings/uniprot/{pdb_code}')
+    if not response.ok:
+        print('No UniProt mapping found for', pdb_code)
+        return None
+    uniprot_id = list(response.json()[pdb_code.lower()]['UniProt'].keys())[0]
+
+    response = requests.get(f'https://alphafold.ebi.ac.uk/api/prediction/{uniprot_id}')
+    if not response.ok:
+        print('No AlphaFold prediction found for', pdb_code)
+        return None
+    pdb_url = response.json()[0]['pdbUrl']
+
+    response = requests.get(pdb_url)
+    if not response.ok:
+        print('Error retrieving AlphaFold PDB file for', pdb_code)
+        return None
+    pdb_data = response.text
+
+    if not af_dir.exists():
+        af_dir.mkdir()
+    fn = af_dir / (pdb_code + '.pdb')
+    with open(fn, 'w') as f:
+        f.write(pdb_data)
+    
+    return fn
