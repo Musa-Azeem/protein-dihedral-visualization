@@ -6,7 +6,8 @@ from lib.retrieve_data import (
     retrieve_pdb_file, 
     retrieve_casp_predictions, 
     retrieve_casp_results,
-    retrieve_alphafold_prediction
+    retrieve_alphafold_prediction,
+    get_pdb_code
 )
 from lib.utils import get_seq_funcs, check_alignment, compute_rmsd, get_find_target, test_correlation
 from lib.modules import (
@@ -59,16 +60,14 @@ class DihedralAdherence():
 
         # Get targetlist and corresponding pdbcode
         targetlist = retrieve_target_list()
-        self.pdb_code = targetlist.loc[casp_protein_id, 'pdb_code']
-        if self.pdb_code == '':
-            raise ValueError(f'No PDB code found for {casp_protein_id}')
+        self.pdb_code, self.is_domain = get_pdb_code(casp_protein_id, targetlist)
         self.alphafold_id = f'{casp_protein_id}TS427_1'
         print('Casp ID:', casp_protein_id, '\tPDB:', self.pdb_code)
 
         # Retrieve results and pdb files for xray and predictions
         self.results = retrieve_casp_results(casp_protein_id)
         self.xray_fn, self.sequence = retrieve_pdb_file(self.pdb_code)
-        self.predictions_dir = retrieve_casp_predictions(casp_protein_id)
+        self.predictions_dir = retrieve_casp_predictions(casp_protein_id, self.is_domain)
         self.af_fn = retrieve_alphafold_prediction(self.pdb_code)
 
         # Get sequence and sequence context functions
@@ -211,6 +210,7 @@ class DihedralAdherence():
             self.af_phi_psi = pd.read_csv(self.outdir / 'af_phi_psi.csv')
         else:
             print('No AlphaFold phi-psi data found')
+        seq_filter(self)
         self.get_results_metadata()
         
     def load_results_da(self):
@@ -226,6 +226,7 @@ class DihedralAdherence():
             self.af_phi_psi = pd.read_csv(self.outdir / 'af_phi_psi.csv')
         else:
             print('No AlphaFold phi-psi data found')
+        seq_filter(self)
         self.get_results_metadata()
         self._get_grouped_preds()
 

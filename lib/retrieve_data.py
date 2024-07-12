@@ -9,6 +9,7 @@ import warnings
 
 TARGETLIST_URL = 'https://predictioncenter.org/casp14/targetlist.cgi?type=csv'
 PREDICTIONS_URL = 'https://predictioncenter.org/download_area/CASP14/predictions/regular/{casp_protein_id}.tar.gz'
+PREDICTIONS_DOMAIN_URL = 'https://predictioncenter.org/download_area/CASP14/predictions_trimmed_to_domains/{casp_protein_id}.tar.gz'
 RESULTS_URL = 'https://predictioncenter.org/download_area/CASP14/results/tables/casp14.res_tables.T.tar.gz'
 
 # def_retrieve_data():
@@ -22,9 +23,19 @@ def retrieve_target_list():
     targetlist = pd.read_csv(targetlist_file, sep=';').set_index('Target')
 
     def re_pdb_code(x):
-        m = re.search(r"\b\d[0-9a-z]{3}\b", x)
+        m = re.search(r"\b\d[0-9a-z]{3}\b", x.Description)
         return m.group() if m else ''
-    targetlist['pdb_code'] = targetlist['Description'].apply(re_pdb_code)
+    # def re_pdb_code(x):
+    #     if x.Type == 'Refinement':
+    #         m = re.match(r'R\d{4}', x.name)
+    #         if not m.group() or not (regular_id := m.group().replace('R','T')) in targetlist.index:
+    #             return ''
+    #         desc = targetlist.loc[regular_id].Description
+    #     else:
+    #         desc = x.Description
+    #     m = re.search(r"\b\d[0-9a-z]{3}\b", desc)
+    #     return m.group() if m else ''
+    targetlist['pdb_code'] = targetlist.apply(re_pdb_code, axis=1)
 
     return targetlist
 
@@ -38,8 +49,11 @@ def retrieve_pdb_file(pdb_code):
         residue_chain = str(record.seq)
     return xray_fn, residue_chain
 
-def retrieve_casp_predictions(casp_protein_id):
-    predictions_url = PREDICTIONS_URL.format(casp_protein_id=casp_protein_id)
+def retrieve_casp_predictions(casp_protein_id, is_domain):
+    if is_domain:
+        predictions_url = PREDICTIONS_DOMAIN_URL.format(casp_protein_id=casp_protein_id)
+    else:
+        predictions_url = PREDICTIONS_URL.format(casp_protein_id=casp_protein_id)
     predictions_dir = Path(f'./casp-predictions/')
     if not (predictions_dir / casp_protein_id).exists():
         predictions_dir.mkdir(exist_ok=True)
@@ -57,10 +71,11 @@ def retrieve_casp_results(casp_protein_id):
     results_file = results_dir / f'{casp_protein_id}.txt'
     # some files are named differently
     if not results_file.exists():
-        results_file = Path(results_dir / f'{casp_protein_id}-D1.txt')
-    results = pd.read_csv(results_file, sep='\s+')
+        raise ValueError(f'No CASP results found for {casp_protein_id}')
+        # results_file = Path(results_dir / f'{casp_protein_id}-D1.txt')
+    results = pd.read_csv(results_file, sep=r'\s+')
     results = results[results.columns[1:]] # remove line number column
-    results['Model'] = results['Model'].apply(lambda x: x.split('-')[0])
+    # results['Model'] = results['Model'].apply(lambda x: x.split('-')[0])
     return results
 
 def retrieve_alphafold_prediction(pdb_code):
@@ -90,3 +105,15 @@ def retrieve_alphafold_prediction(pdb_code):
         f.write(pdb_data)
     
     return fn
+
+def get_pdb_code(casp_protein_id, targetlist):
+    protein_id = casp_protein_id
+    is_domain = False
+    if len(protein_id.split('-')) == 2:
+        # Domain protein - pdb code is the same as corresponding regular protein
+        protein_id = protein_id.split('-')[0]
+        is_domain = True
+    pdb_code = targetlist.loc[protein_id, 'pdb_code']
+    if not pdb_code:
+        raise ValueError(f'No PDB code found for {casp_protein_id}')
+    return pdb_code, is_domain

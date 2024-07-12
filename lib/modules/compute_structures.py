@@ -69,6 +69,10 @@ def get_phi_psi_for_structure(ins, protein_structure, protein_id):
 def seq_filter(ins):
     # Remove sequences with missing phi or psi
     ins.xray_phi_psi = ins.xray_phi_psi[~ins.xray_phi_psi.phi.isna() & ~ins.xray_phi_psi.psi.isna()]
+
+    # remove sequences in xray that never appear in any predictions
+    ins.xray_phi_psi = ins.xray_phi_psi[ins.xray_phi_psi.seq_ctxt.isin(ins.phi_psi_predictions.seq_ctxt)]
+
     # remove all predictions with outlier number of overlapping sequences with xray
     # or outlier length
     xray_seqs_unique = set(ins.xray_phi_psi.seq_ctxt.unique())
