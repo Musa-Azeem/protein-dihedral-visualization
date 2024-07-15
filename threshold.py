@@ -8,12 +8,13 @@ import seaborn as sns
 import scipy.stats as stats
 from pathlib import Path
 from tqdm import tqdm
+import statsmodels.api as sm
+import itertools
 
 PDBMINE_URL = os.getenv("GREEN_PDBMINE_URL")
 PROJECT_DIR = 'casp_da'
 proteins = ['T1024', 'T1096', 'T1091', 'T1030', 'T1038', 'T1030-D2', 'T1024-D1', 'T1032-D1', 'T1053-D1', 'T1027-D1', 'T1029-D1']
 
-import itertools
 for n in range(1,6):
     results = []
     combinations = list(itertools.combinations(np.linspace(16,256,7), n))
