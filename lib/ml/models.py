@@ -23,9 +23,9 @@ class MLPredictor():
 class KDENet(nn.Module):
     def __init__(self):
         super().__init__()
-        self.l1 = nn.Linear(30, 64)
-        self.l2 = nn.Linear(64, 64)
-        self.out = nn.Linear(64, 2)
+        self.l1 = nn.Linear(30, 16)
+        self.l2 = nn.Linear(16, 32)
+        self.out = nn.Linear(32, 2)
     
     def forward(self, X, xres, af):
         x = torch.hstack([X.flatten(1), af, xres])

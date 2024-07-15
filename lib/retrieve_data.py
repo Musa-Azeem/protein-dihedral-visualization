@@ -88,7 +88,7 @@ def retrieve_alphafold_prediction(pdb_code):
 
     response = requests.get(f'https://alphafold.ebi.ac.uk/api/prediction/{uniprot_id}')
     if not response.ok:
-        print('No AlphaFold prediction found for', pdb_code)
+        print('No prediction found in AlphaFold DB for', pdb_code)
         return None
     pdb_url = response.json()[0]['pdbUrl']
 
