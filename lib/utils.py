@@ -246,6 +246,7 @@ def compute_rmsd(fnA, fnB, startA=None, endA=None, startB=None, endB=None, print
 
     residuesA = ''.join([AMINO_ACID_CODES.get(r.resname, 'X') for r in chainA.get_residues()])[startA:endA]
     residuesB = ''.join([AMINO_ACID_CODES.get(r.resname, 'X') for r in chainB.get_residues()])[startB:endB]
+    print(len(residuesA), len(residuesB)   )
     aligner = PairwiseAligner()
     aligner.mode = 'global'
     alignments =  aligner.align(residuesA, residuesB)

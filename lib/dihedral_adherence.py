@@ -256,6 +256,7 @@ class DihedralAdherence():
     
     def split_and_compute_rmsd(self, pred_id=None, split=None, print_alignment=True):
         # split should be int, tuple, list of ints or list of tuples
+        # if list of tuples, each tuple should be (pos_xray, pos_pred)
         if pred_id is None:
             pred_id = self.protein_ids[0]
         
