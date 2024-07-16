@@ -323,7 +323,7 @@ def plot_da_vs_gdt_simple(ins, axlims, fn):
 
     sns.scatterplot(data=grouped_preds, x='da', y='GDT_TS', ax=ax, marker='o', s=25, edgecolor='b', legend=True)
     ax.scatter(af.da, af.GDT_TS, color='red', marker='x', label='AlphaFold', zorder=10)
-    ax.scatter(xray_da, 100, color='green', marker='x', label='X-ray', zorder=10)
+    # ax.scatter(xray_da, 100, color='green', marker='x', label='X-ray', zorder=10)
     ax.plot(
         np.linspace(0, grouped_preds.da.max() + 5, 100), 
         regr.intercept + regr.slope * np.linspace(0, grouped_preds.da.max() + 5, 100), 
@@ -345,11 +345,12 @@ def plot_da_vs_gdt_simple(ins, axlims, fn):
         ax.set_xlim(axlims[0][0], axlims[0][1])
         ax.set_ylim(axlims[1][0], axlims[1][1])
     else:
+        pass
         # ax.set_xlim(0, grouped_preds.da.max() + 5)
-        ax.set_xlim(0, max(100, grouped_preds.da.max() + 5))
+        # ax.set_xlim(0, max(100, grouped_preds.da.max() + 5))
         # ax.set_ylim(-0.5, grouped_preds.GDT_TS.max() + 5)
         # ax.set_ylim(-0.5, grouped_preds.GDT_TS.max() + 5)
-        ax.set_ylim(0, 105)
+        # ax.set_ylim(0, 105)
 
     plt.legend(fontsize=12)
     plt.tight_layout()

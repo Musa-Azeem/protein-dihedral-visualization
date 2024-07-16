@@ -42,7 +42,7 @@ class DihedralAdherence():
     def __init__(
             self, casp_protein_id, winsizes, pdbmine_url, 
             projects_dir='tests',
-            kdews=None, mode='kde',
+            kdews=None, mode='kde', quantile=1,
             model=None, ml_lengths=[4096, 512, 256, 256], weights_file='ml_data/best_model.pt', device='cpu',
             pdbmine_cache_dir='casp_cache',
         ):
@@ -62,6 +62,9 @@ class DihedralAdherence():
         targetlist = retrieve_target_list()
         self.pdb_code, self.is_domain = get_pdb_code(casp_protein_id, targetlist)
         self.alphafold_id = f'{casp_protein_id}TS427_1'
+        if self.is_domain:
+            id, domain = casp_protein_id.split('-')
+            self.alphafold_id = f'{id}TS427_1-{domain}'
         print('Casp ID:', casp_protein_id, '\tPDB:', self.pdb_code)
 
         # Retrieve results and pdb files for xray and predictions
@@ -84,7 +87,7 @@ class DihedralAdherence():
         self.model = None
 
         self.bw_method = None
-        self.quantile = 1
+        self.quantile = quantile
         self.kdews = [1] * len(winsizes) if kdews is None else kdews
 
         self.queries = []
@@ -239,6 +242,11 @@ class DihedralAdherence():
         self.seqs = self.xray_phi_psi.seq_ctxt.unique()
         self.protein_ids = self.phi_psi_predictions.protein_id.unique()
         if not self.alphafold_id in self.protein_ids:
+            for i in range(2, 6):
+                af_id = f'{self.casp_protein_id}TS427_{i}'
+                if af_id in self.protein_ids:
+                    self.alphafold_id = af_id
+                    break
             print('No CASP AlphaFold prediction')
         return self.overlapping_seqs, self.seqs, self.protein_ids
     
