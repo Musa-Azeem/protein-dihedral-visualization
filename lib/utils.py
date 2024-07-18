@@ -319,10 +319,10 @@ def get_find_target(ins):
             def find_target_wrapper(phi_psi_dist, bw_method):
                 af = get_af(phi_psi_dist.seq.values[0])
                 return find_kdepeak_af(phi_psi_dist, bw_method, af)
-        case 'weighted_kde_af':
-            xray_da_fn = 'xray_phi_psi_da_afw.csv'
-            pred_da_fn = 'phi_psi_predictions_da_afw.csv'
+        case 'af':
+            xray_da_fn = 'xray_phi_psi_da_afonly.csv'
+            pred_da_fn = 'phi_psi_predictions_da_afonly.csv'
             def find_target_wrapper(phi_psi_dist, bw_method):
                 af = get_af(phi_psi_dist.seq.values[0])
-                return find_kdepeak_af(phi_psi_dist, bw_method, af, find_peak=find_kdepeak_w)
+                return af[['phi', 'psi']].iloc[0] if af.shape[0] > 0 else find_kdepeak(phi_psi_dist, bw_method)
     return find_target_wrapper, Path(xray_da_fn), Path(pred_da_fn)

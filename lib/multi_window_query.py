@@ -66,3 +66,5 @@ class MultiWindowQuery:
         self.xray_phi_psi = pd.read_csv(self.outdir / 'xray_phi_psi.csv')
         if (self.outdir / 'af_phi_psi.csv').exists():
             self.af_phi_psi = pd.read_csv(self.outdir / 'af_phi_psi.csv')
+        else:
+            print('No alphafold phi-psi predictions found')
