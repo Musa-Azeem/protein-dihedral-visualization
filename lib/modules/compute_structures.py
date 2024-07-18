@@ -42,7 +42,7 @@ def get_phi_psi_predictions(ins, replace):
     
     return phi_psi_predictions
 
-def get_phi_psi_for_structure(ins, protein_structure, protein_id):
+def get_phi_psi_for_structure(ins, protein_structure, protein_id, bfactor=False):
     protein_structure.atom_to_internal_coordinates(verbose=False)
     resultDict = structure_rebuild_test(protein_structure)
     if not resultDict['pass']:
@@ -63,7 +63,11 @@ def get_phi_psi_for_structure(ins, protein_structure, protein_id):
             phi = residues[i].internal_coord.get_angle("phi")
             psi = psi if psi else np.nan # if psi is None, set it to np.nan
             phi = phi if phi else np.nan # if phi is None, set it to np.nan
-        phi_psi_.append([i, seq_ctxt, res, phi, psi, protein_id])
+        if bfactor:
+            ave_bfactor = np.mean([atom.bfactor for atom in residues[i]])
+            phi_psi_.append([i, seq_ctxt, res, phi, psi, protein_id, ave_bfactor])
+        else:
+            phi_psi_.append([i, seq_ctxt, res, phi, psi, protein_id])
     return phi_psi_
 
 def seq_filter(ins):
@@ -93,8 +97,9 @@ def get_phi_psi_af(ins, replace=False):
         print('Computing phi-psi for alphafold')
         parser = PDBParser()
         af_structure = parser.get_structure(ins.pdb_code, ins.af_fn)
-        af_phi_psi = get_phi_psi_for_structure(ins, af_structure, ins.pdb_code)
-        af_phi_psi = pd.DataFrame(af_phi_psi, columns=['pos', 'seq_ctxt', 'res', 'phi', 'psi', 'protein_id'])
+        print(ins.af_fn)
+        af_phi_psi = get_phi_psi_for_structure(ins, af_structure, ins.pdb_code, bfactor=True)
+        af_phi_psi = pd.DataFrame(af_phi_psi, columns=['pos', 'seq_ctxt', 'res', 'phi', 'psi', 'protein_id', 'conf'])
         af_phi_psi.to_csv(ins.outdir / 'af_phi_psi.csv', index=False)
     else:
         af_phi_psi = pd.read_csv(ins.outdir / 'af_phi_psi.csv')

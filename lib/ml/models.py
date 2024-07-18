@@ -18,7 +18,7 @@ class MLPredictor():
         return self.predict(X, xres, af)
     
     def load_weights(self):
-        self.model.load_state_dict(torch.load(self.weights_file))
+        self.model.load_state_dict(torch.load(self.weights_file, map_location=self.device))
 
 class KDENet(nn.Module):
     def __init__(self):
