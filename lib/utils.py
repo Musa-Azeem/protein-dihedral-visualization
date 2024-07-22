@@ -285,11 +285,11 @@ def compute_rmsd(fnA, fnB, startA=None, endA=None, startB=None, endB=None, print
     return sup.rms
 
 def test_correlation(ins):
-    grouped_preds = ins.grouped_preds.dropna(subset=['da', 'GDT_TS'])
-    regr = linregress(grouped_preds.da, grouped_preds.GDT_TS)
+    grouped_preds = ins.grouped_preds.dropna(subset=['log_da', 'GDT_TS'])
+    regr = linregress(grouped_preds.log_da, grouped_preds.GDT_TS)
     print(f'LinRegr - Slope: {regr.slope}, Intercept: {regr.intercept}', 'R-squared:', regr.rvalue**2, 'p-value:', regr.pvalue)
 
-    corr, pval = pearsonr(grouped_preds.da, grouped_preds.GDT_TS)
+    corr, pval = pearsonr(grouped_preds.log_da, grouped_preds.GDT_TS)
     print(f'Pearson Correlation: {corr}, p-value: {pval}')
 
     return (regr.rvalue**2, corr)

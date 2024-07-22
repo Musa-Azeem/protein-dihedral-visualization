@@ -140,8 +140,10 @@ class DihedralAdherence():
 
     def compute_structures(self, replace=False):
         # TODO: align pos column of predictions with xray_phi_psi using sequence alignment
-        self.xray_phi_psi = get_phi_psi_xray(self, replace)
-        self.phi_psi_predictions = get_phi_psi_predictions(self, replace)
+        # self.xray_phi_psi = get_phi_psi_xray(self, replace)
+        # self.phi_psi_predictions = get_phi_psi_predictions(self, replace)
+        self.xray_phi_psi = get_phi_psi_xray(self, False)
+        self.phi_psi_predictions = get_phi_psi_predictions(self, False)
         if self.af_fn is not None:
             self.af_phi_psi = get_phi_psi_af(self, replace)
 
@@ -248,6 +250,10 @@ class DihedralAdherence():
                     self.alphafold_id = af_id
                     break
             print('No CASP AlphaFold prediction')
+        if self.af_phi_psi is not None:
+            self.phi_psi_predictions = self.phi_psi_predictions.merge(self.af_phi_psi[['seq_ctxt', 'conf']], on='seq_ctxt', how='left')
+        else:
+            self.phi_psi_predictions['conf'] = np.nan
         return self.overlapping_seqs, self.seqs, self.protein_ids
     
     def fit_model(self):
@@ -403,22 +409,27 @@ class DihedralAdherence():
         # GDT_TS = (GDT_P1 + GDT_P2 + GDT_P4 + GDT_P8)/4,
         # where GDT_Pn denotes percent of residues under distance cutoff <= nÅ
         self.phi_psi_predictions['da_na'] = self.phi_psi_predictions.da.isna()
-        def agg_da(x):
-            x = x[x < x.quantile(self.quantile)]
-            return x.agg('mean')
-        self.grouped_preds = self.phi_psi_predictions.groupby('protein_id', as_index=False).agg(
-            # da=('da', lambda x: x[x < x.quantile(self.quantile)].agg('mean')), 
-            da=('da', agg_da), 
-            da_std=('da', lambda x: x[x < x.quantile(self.quantile)].agg('std')),
-            da_na=('da_na', lambda x: x.sum() / len(x)),
-        )
+        # def agg_da(x):
+        #     x = x[x < x.quantile(self.quantile)]
+        #     return x.agg('mean')
+        # self.grouped_preds = self.phi_psi_predictions.groupby('protein_id', as_index=False).agg(
+        #     da=('da', agg_da),
+        #     da_na=('da_na', lambda x: x.sum() / len(x)),
+        # )
+        agg = lambda g: (g.da * g.conf).sum() / g.conf.sum()
+        if False: #self.af_phi_psi is not None:
+            self.grouped_preds = self.phi_psi_predictions.groupby('protein_id').apply(agg, include_groups=False).to_frame('da')
+        else:
+            self.grouped_preds = self.phi_psi_predictions.groupby('protein_id').da.mean().to_frame('da')
+        self.grouped_preds['da_na'] = self.phi_psi_predictions[['protein_id', 'da_na']].groupby('protein_id').mean()
         self.grouped_preds = pd.merge(
-            self.grouped_preds,
+            self.grouped_preds.reset_index(),
             self.results[['Model', 'GDT_TS']],
             left_on='protein_id',
             right_on='Model',
             how='inner'
         )
+        self.grouped_preds['log_da'] = np.log10(self.grouped_preds['da'])
         self.grouped_preds['target'] = self.casp_protein_id
         self.grouped_preds_da = self.phi_psi_predictions.pivot(index='protein_id', columns='pos', values='da')
 

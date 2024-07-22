@@ -306,27 +306,26 @@ def plot_heatmap(ins, fillna, fillna_row, fn):
 
 
 def plot_da_vs_gdt_simple(ins, axlims, fn):
-    grouped_preds = ins.grouped_preds.dropna(subset=['da','GDT_TS'])
+    grouped_preds = ins.grouped_preds.dropna(subset=['log_da','GDT_TS'])
     # grouped_preds = grouped_preds[grouped_preds.GDT_TS < 40]
     # grouped_preds = grouped_preds[grouped_preds.GDT_TS < 30]
     # regr = linregress(grouped_preds.da, grouped_preds.GDT_TS)
-    regr = linregress(grouped_preds.da, grouped_preds.GDT_TS)
+    regr = linregress(grouped_preds.log_da, grouped_preds.GDT_TS)
     print(f'Slope: {regr.slope}, Intercept: {regr.intercept}', 'R-squared:', regr.rvalue**2)
 
     af = grouped_preds[grouped_preds.protein_id == ins.alphafold_id]
-    xray_da = ins.xray_phi_psi.da.mean()
-
+    xray_da = np.log10(ins.xray_phi_psi.da.mean())
 
     sns.set_theme(style="whitegrid")
     sns.set_palette("pastel")
     fig, ax = plt.subplots(figsize=(8, 6.5))
 
-    sns.scatterplot(data=grouped_preds, x='da', y='GDT_TS', ax=ax, marker='o', s=25, edgecolor='b', legend=True)
-    ax.scatter(af.da, af.GDT_TS, color='red', marker='x', label='AlphaFold', zorder=10)
-    # ax.scatter(xray_da, 100, color='green', marker='x', label='X-ray', zorder=10)
+    sns.scatterplot(data=grouped_preds, x='log_da', y='GDT_TS', ax=ax, marker='o', s=25, edgecolor='b', legend=True)
+    ax.scatter(af.log_da, af.GDT_TS, color='red', marker='x', label='AlphaFold', zorder=10)
+    ax.scatter(xray_da, 100, color='green', marker='x', label='X-ray', zorder=10)
     ax.plot(
-        np.linspace(0, grouped_preds.da.max() + 5, 100), 
-        regr.intercept + regr.slope * np.linspace(0, grouped_preds.da.max() + 5, 100), 
+        np.linspace(0, grouped_preds.log_da.max() + 5, 100), 
+        regr.intercept + regr.slope * np.linspace(0, grouped_preds.log_da.max() + 5, 100), 
         color='red', lw=2, label='Regression Line'
     )
 
@@ -345,11 +344,9 @@ def plot_da_vs_gdt_simple(ins, axlims, fn):
         ax.set_xlim(axlims[0][0], axlims[0][1])
         ax.set_ylim(axlims[1][0], axlims[1][1])
     else:
-        pass
-        # ax.set_xlim(0, grouped_preds.da.max() + 5)
-        # ax.set_xlim(0, max(100, grouped_preds.da.max() + 5))
-        # ax.set_ylim(-0.5, grouped_preds.GDT_TS.max() + 5)
-        # ax.set_ylim(-0.5, grouped_preds.GDT_TS.max() + 5)
+        ax.set_xlim(grouped_preds.log_da.min() - 0.1, grouped_preds.log_da.max() + 0.1)
+        ax.set_ylim(-0.5, grouped_preds.GDT_TS.max() + 5)
+        ax.set_ylim(-0.5, grouped_preds.GDT_TS.max() + 5)
         # ax.set_ylim(0, 105)
 
     plt.legend(fontsize=12)

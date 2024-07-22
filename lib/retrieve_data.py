@@ -85,6 +85,7 @@ def retrieve_alphafold_prediction(pdb_code):
         print('No UniProt mapping found for', pdb_code)
         return None
     uniprot_id = list(response.json()[pdb_code.lower()]['UniProt'].keys())[0]
+    print('UniProt ID:', uniprot_id)
 
     response = requests.get(f'https://alphafold.ebi.ac.uk/api/prediction/{uniprot_id}')
     if not response.ok:
