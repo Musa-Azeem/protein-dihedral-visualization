@@ -140,10 +140,8 @@ class DihedralAdherence():
 
     def compute_structures(self, replace=False):
         # TODO: align pos column of predictions with xray_phi_psi using sequence alignment
-        # self.xray_phi_psi = get_phi_psi_xray(self, replace)
-        # self.phi_psi_predictions = get_phi_psi_predictions(self, replace)
-        self.xray_phi_psi = get_phi_psi_xray(self, False)
-        self.phi_psi_predictions = get_phi_psi_predictions(self, False)
+        self.xray_phi_psi = get_phi_psi_xray(self, replace)
+        self.phi_psi_predictions = get_phi_psi_predictions(self, replace)
         if self.af_fn is not None:
             self.af_phi_psi = get_phi_psi_af(self, replace)
 
