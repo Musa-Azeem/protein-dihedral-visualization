@@ -42,7 +42,11 @@ class MultiWindowQuery:
         self.xray_phi_psi = self.xray_phi_psi[~self.xray_phi_psi.phi.isna() & ~self.xray_phi_psi.psi.isna()]
         if self.af_fn is not None:
             self.af_phi_psi = get_phi_psi_af(self, replace)
-
+    def compute_af_structure(self, replace=False):
+        if self.af_fn is not None:
+            self.af_phi_psi = get_phi_psi_af(self, replace)
+        else:
+            print('No alphafold prediction found')
     def test_pdbmine_conn(self):
         response = requests.get(self.pdbmine_url + f'/v1/api/protein/{self.pdb_code}')
         print('PDBMine Connection:', response.status_code)
