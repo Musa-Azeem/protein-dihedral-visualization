@@ -407,18 +407,10 @@ class DihedralAdherence():
         # GDT_TS = (GDT_P1 + GDT_P2 + GDT_P4 + GDT_P8)/4,
         # where GDT_Pn denotes percent of residues under distance cutoff <= nÅ
         self.phi_psi_predictions['da_na'] = self.phi_psi_predictions.da.isna()
-        # def agg_da(x):
-        #     x = x[x < x.quantile(self.quantile)]
-        #     return x.agg('mean')
-        # self.grouped_preds = self.phi_psi_predictions.groupby('protein_id', as_index=False).agg(
-        #     da=('da', agg_da),
-        #     da_na=('da_na', lambda x: x.sum() / len(x)),
-        # )
-        agg = lambda g: (g.da * g.conf).sum() / g.conf.sum()
-        if False: #self.af_phi_psi is not None:
-            self.grouped_preds = self.phi_psi_predictions.groupby('protein_id').apply(agg, include_groups=False).to_frame('da')
-        else:
-            self.grouped_preds = self.phi_psi_predictions.groupby('protein_id').da.mean().to_frame('da')
+
+        # agg = lambda g: (g.da * g.conf).sum() / g.conf.sum()
+        # self.grouped_preds = self.phi_psi_predictions.groupby('protein_id').apply(agg, include_groups=False).to_frame('da')
+        self.grouped_preds = self.phi_psi_predictions.groupby('protein_id').da.mean().to_frame('da')
         self.grouped_preds['da_na'] = self.phi_psi_predictions[['protein_id', 'da_na']].groupby('protein_id').mean()
         self.grouped_preds = pd.merge(
             self.grouped_preds.reset_index(),
