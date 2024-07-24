@@ -48,13 +48,16 @@ for id in pdb_codes:
     y = []
     x_res = []
     af_phi_psi = []
+    af_confs = []
     for i,row in tqdm(seqs.iterrows()):
         kdepeaks = []
         if np.isnan(row.phi) or np.isnan(row.psi) or np.isnan(row.phi_af) or np.isnan(row.psi_af):
             print('NaNs for', row.seq)
             continue
+        af_conf = da.af_phi_psi.loc[da.af_phi_psi.seq_ctxt == row.seq, 'conf'].values[0]
         for q in da.queries:
             inner_seq = q.get_subseq(row.seq)
+            # matches = q.results[q.results.seq == inner_seq][['seq', 'phi', 'psi']]
             matches = q.results[q.results.seq == inner_seq]
             if matches.shape[0] < 2:
                 kdepeaks.append(torch.zeros(2))
@@ -64,7 +67,7 @@ for id in pdb_codes:
             x = np.stack([phi, psi])
             try:
                 kde = gaussian_kde(x, bw_method=0.5)
-                phi_grid, psi_grid = np.meshgrid(np.linspace(-180, 180, 360), np.linspace(-180, 180, 360))
+                phi_grid, psi_grid = np.meshgrid(np.linspace(-180, 180, 180), np.linspace(-180, 180, 180))
                 grid = np.vstack([phi_grid.ravel(), psi_grid.ravel()])
                 probs = kde(grid).reshape(phi_grid.shape)
                 kdepeak = grid[:,probs.argmax()]
@@ -75,10 +78,12 @@ for id in pdb_codes:
         if torch.sum(kdepeaks) == 0:
             print('No matches for', row.seq)
             continue
+
         X.append(kdepeaks)
         y.append(torch.tensor([row.phi, row.psi]))
         x_res.append(AMINO_ACID_MAP[row.res])
         af_phi_psi.append(torch.tensor([row.phi_af, row.psi_af]))
+        af_confs.append(af_conf)
     if len(X) == 0:
         print('No matches for', id)
         continue
@@ -86,4 +91,5 @@ for id in pdb_codes:
     y = torch.stack(y)
     x_res = F.one_hot(torch.tensor(x_res).to(torch.int64), num_classes=20)
     af_phi_psi = torch.stack(af_phi_psi)
-    torch.save((X, x_res, af_phi_psi, y), outdir / f'{id}.pt')
+    af_conf = torch.tensor(af_confs)
+    torch.save((X, x_res, af_phi_psi, af_conf, y), outdir / f'{id}.pt')
