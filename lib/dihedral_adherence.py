@@ -27,7 +27,8 @@ from lib.plotting import (
     plot_heatmap,
     plot_da_vs_gdt_simple,
     plot_res_vs_da_1plot,
-    plot_dist_kde
+    plot_dist_kde,
+    plot_one_dist_scatter
 )
 from lib.constants import AMINO_ACID_CODES, AMINO_ACID_CODES_INV, AMINO_ACID_CODE_NAMES
 import pandas as pd
@@ -399,6 +400,10 @@ class DihedralAdherence():
         protein_id = pred_id or self.protein_ids[0]
         percentile = percentile or 0.95
         plot_dist_kde(self, protein_id, percentile, fn)
+    
+    def plot_one_dist_scatter(self, seq=None, fn=None):
+        seq = seq or self.overlapping_seqs[0]
+        plot_one_dist_scatter(self, seq, fn)
     
     def get_id(self, group_id):
         return f'{self.casp_protein_id}TS{group_id}'

@@ -10,6 +10,20 @@ from lib.utils import calc_da, calc_da_for_one, get_phi_psi_dist
 
 colors = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple', 'tab:brown', 'tab:pink', 'tab:gray', 'tab:olive', 'tab:cyan']
 
+def plot_one_dist_scatter(ins, seq, fn):
+    phi_psi_dist, info = get_phi_psi_dist(ins.queries, seq)
+    xray_phi_psi = ins.xray_phi_psi[ins.xray_phi_psi.seq_ctxt == seq]
+    sns.scatterplot(data=phi_psi_dist, x='phi', y='psi', hue='winsize', alpha=0.8, palette='Dark2')
+    plt.scatter(xray_phi_psi.phi, xray_phi_psi.psi, color='red', marker='x', label='X-ray')
+    plt.title(f'PDBMine Distribution of Dihedral Angles for Residue {xray_phi_psi.res.values[0]} of Window {seq}')
+    plt.xlabel('Phi')
+    plt.ylabel('Psi')
+    plt.legend()
+    plt.tight_layout()
+    if fn:
+        plt.savefig(fn, bbox_inches='tight', dpi=300)
+    plt.show()
+
 def plot_one_dist(ins, seq, pred_id, pred_name, axlims, bw_method, fn):
     pred_name = pred_name or pred_id[5:]
     bw_method = bw_method if bw_method != -1 else ins.bw_method
