@@ -15,6 +15,8 @@ def plot_one_dist_scatter(ins, seq, fn):
     xray_phi_psi = ins.xray_phi_psi[ins.xray_phi_psi.seq_ctxt == seq]
     sns.scatterplot(data=phi_psi_dist, x='phi', y='psi', hue='winsize', alpha=0.8, palette='Dark2')
     plt.scatter(xray_phi_psi.phi, xray_phi_psi.psi, color='red', marker='x', label='X-ray')
+    plt.xlim(-180, 180)
+    plt.ylim(-180, 180)
     plt.title(f'PDBMine Distribution of Dihedral Angles for Residue {xray_phi_psi.res.values[0]} of Window {seq}')
     plt.xlabel('Phi')
     plt.ylabel('Psi')

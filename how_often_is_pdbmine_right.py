@@ -25,6 +25,7 @@ from lib.utils import get_phi_psi_dist, find_kdepeak, calc_da
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 from tqdm import tqdm
+from numpy.linalg import LinAlgError
 
 max_clusters = 7
 
@@ -33,16 +34,19 @@ proteins = [
 	'T1025-D1', 'T1028-D1', 'T1030-D1', 'T1053-D2', 'T1057-D1','T1058-D1', 'T1058-D2'
 ]
 
+rows = []
 for protein in proteins:
     da = DihedralAdherence(protein, [4,5,6,7], PDBMINE_URL, PROJECT_DIR, kdews=[1,32,64,128], 
                            mode='ml', weights_file='ml_runs/best_model-kde_16-32_383.pt', device='cpu')
     da.load_results()
-    rows = []
     for seq in tqdm(da.xray_phi_psi.seq_ctxt.unique()):
         if 'X' in seq:
             print('Skipping', protein, seq, '\t[Contains X]')
             continue
         phi_psi_dist, info = get_phi_psi_dist(da.queries, seq)
+        if phi_psi_dist.shape[0] < 2: 
+            print('Skipping', protein, seq, '\t[Not enough samples]')
+            continue
         xray = da.xray_phi_psi.loc[da.xray_phi_psi.seq_ctxt == seq][['phi','psi']]
         if xray.shape[0] == 0:
             print('Skipping', protein, seq, '\t[No Xray]')
@@ -72,7 +76,12 @@ for protein in proteins:
         peaks = []
         cs = phi_psi_dist.cluster.unique()
         for c in cs:
-            kdepeak = find_kdepeak(phi_psi_dist.loc[phi_psi_dist.cluster == c], 0.5)
+            if phi_psi_dist.loc[phi_psi_dist.cluster == c].shape[0] < 2:
+                continue
+            try:
+                kdepeak = find_kdepeak(phi_psi_dist.loc[phi_psi_dist.cluster == c], 0.5)
+            except LinAlgError:
+                continue
             peaks.append(kdepeak)
         peaks = np.array(peaks)
 
