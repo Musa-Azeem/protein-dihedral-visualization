@@ -10,9 +10,11 @@ def query_and_process_pdbmine(ins):
     if not ins.match_outdir.exists() or len(list(ins.match_outdir.iterdir())) == 0:
         ins.match_outdir.mkdir(exist_ok=True, parents=True)
         query_pdbmine(ins)
-    phi_psi_mined = get_phi_psi_mined(ins)
 
-    return phi_psi_mined
+    phi_psi_mined = get_phi_psi_mined(ins)
+    phi_psi_mined_window = get_phi_psi_mined_window(ins)
+
+    return phi_psi_mined, phi_psi_mined_window
 
 # Get Phi-Psi distribution from PDBMine
 def query_pdbmine(ins):
@@ -72,8 +74,37 @@ def get_phi_psi_mined(ins):
                     center_res = seq_match[ins.get_center_idx()]
                     res, phi, psi = center_res.values()
                     # if phi > 180 or psi > 180:
-                        # continue
+                    #     continue
                     phi_psi_mined.append([seq, res, phi, psi, chain, protein_id])
     phi_psi_mined = pd.DataFrame(phi_psi_mined, columns=['seq', 'res', 'phi', 'psi', 'chain', 'protein_id'])
     phi_psi_mined['weight'] = ins.weight
     return phi_psi_mined
+
+def get_phi_psi_mined_window(ins):
+    seqs = []
+    rows = []
+    # iterate json files in the match_outdir
+    for matches in ins.match_outdir.iterdir():
+        matches = json.load(matches.open())
+        # iterate over the matches for each sequence window
+        for seq_win,v in matches.items():
+            seq = seq_win[4:]   # remove numbering
+            if seq in seqs:     # never need to process same sequence twice
+                continue
+            seqs.append(seq)
+            match_id = 0
+            # iterate over all the protein chains that contain matches
+            for protein,seq_matches in v.items():
+                protein_id, chain = protein.split('_')
+                if protein_id.lower() == ins.pdb_code.lower(): # skip the protein we're looking at
+                    continue
+                # iterate over the matches in one chain (usually only one)
+                for seq_match in seq_matches:
+                    # iterate over the residues in the sequence window of this match
+                    for window_pos,residue in enumerate(seq_match):
+                        res, phi, psi = residue.values()
+                        rows.append([seq, res, match_id, window_pos, phi, psi, chain, protein_id])
+                    match_id += 1
+
+    phi_psi_mined_window = pd.DataFrame(rows, columns=['seq', 'res', 'match_id', 'window_pos', 'phi', 'psi', 'chain', 'protein_id'])
+    return phi_psi_mined_window

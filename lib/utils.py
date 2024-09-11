@@ -325,4 +325,9 @@ def get_find_target(ins):
             def find_target_wrapper(phi_psi_dist, bw_method):
                 af = get_af(phi_psi_dist.seq.values[0])
                 return af[['phi', 'psi']].iloc[0] if af.shape[0] > 0 else find_kdepeak(phi_psi_dist, bw_method)
+        case 'full_window':
+            xray_da_fn = 'xray_phi_psi_da_window.csv'
+            pred_da_fn = 'phi_psi_predictions_da_window.csv'
+            def find_target_wrapper(phi_psi_dist, bw_method):
+                raise NotImplementedError('Full Window not implemented yet')
     return find_target_wrapper, Path(xray_da_fn), Path(pred_da_fn)

@@ -159,10 +159,10 @@ class DihedralAdherence():
     def query_pdbmine(self, replace=False):
         for query in self.queries:
             if replace or not (self.outdir / f'phi_psi_mined_win{query.winsize}.csv').exists():
-                query.query_and_process_pdbmine()
-                query.results.to_csv(self.outdir / f'phi_psi_mined_win{query.winsize}.csv', index=False)
+                query.query_and_process_pdbmine(self.outdir)
+                # query.results.to_csv(self.outdir / f'phi_psi_mined_win{query.winsize}.csv', index=False)
             else:
-                query.results = pd.read_csv(self.outdir / f'phi_psi_mined_win{query.winsize}.csv')
+                query.load_results(self.outdir)
                 query.results['weight'] = query.weight
         self.queried = True
 
@@ -205,7 +205,8 @@ class DihedralAdherence():
 
     def load_results(self):
         for query in self.queries:
-            query.results = pd.read_csv(self.outdir / f'phi_psi_mined_win{query.winsize}.csv')
+            query.load_results(self.outdir)
+            # query.results = pd.read_csv(self.outdir / f'phi_psi_mined_win{query.winsize}.csv')
             query.results['weight'] = query.weight
         self.queried = True
         self.xray_phi_psi = pd.read_csv(self.outdir / 'xray_phi_psi.csv')
@@ -219,7 +220,8 @@ class DihedralAdherence():
         
     def load_results_da(self):
         for query in self.queries:
-            query.results = pd.read_csv(self.outdir / f'phi_psi_mined_win{query.winsize}.csv')
+            # query.results = pd.read_csv(self.outdir / f'phi_psi_mined_win{query.winsize}.csv')
+            query.load_results(self.outdir)
             if query.results['weight'].values[0] != query.weight:
                 print('WARNING: Weights used to calculate DA are different')
             query.results['weight'] = query.weight
@@ -428,6 +430,6 @@ class DihedralAdherence():
         self.grouped_preds['target'] = self.casp_protein_id
         self.grouped_preds_da = self.phi_psi_predictions.pivot(index='protein_id', columns='pos', values='da')
 
-    def filter_nas(self, quantile=0.9):
+    def filter_nas(self, quantile=0.8):
         self.grouped_preds = self.grouped_preds[self.grouped_preds.da_na <= self.grouped_preds.da_na.quantile(quantile)]
         self.grouped_preds_da = self.grouped_preds_da.loc[self.grouped_preds.protein_id]
