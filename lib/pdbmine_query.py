@@ -19,6 +19,12 @@ class PDBMineQuery():
         self.results = None
         self.results_window = None
     
+    def get_center_idx_pos(self):
+        center_idx = self.get_center_idx()
+        if center_idx < 0:
+            center_idx = self.winsize + center_idx
+        return center_idx
+    
     def set_get_subseq(self, winsize_ctxt):
         self.get_subseq = get_subseq_func(self.winsize, winsize_ctxt)
     def query_and_process_pdbmine(self, outdir):
