@@ -30,9 +30,11 @@ class PDBMineQuery():
     def query_and_process_pdbmine(self, outdir):
         self.results, self.results_window = query_and_process_pdbmine(self)
         self.results = self.results[(self.results.phi <= 180) & (self.results.psi <= 180)]
+        self.results_window = self.results_window[(self.results_window.phi <= 180) & (self.results_window.psi <= 180)]
         self.results.to_csv(outdir / f'phi_psi_mined_win{self.winsize}.csv', index=False)
         self.results_window.to_csv(outdir / f'phi_psi_mined_window_win{self.winsize}.csv', index=False)
     
     def load_results(self, outdir):
         self.results = pd.read_csv(outdir / f'phi_psi_mined_win{self.winsize}.csv')
         self.results_window = pd.read_csv(outdir / f'phi_psi_mined_window_win{self.winsize}.csv')
+        self.results_window = self.results_window[(self.results_window.phi <= 180) & (self.results_window.psi <= 180)]
