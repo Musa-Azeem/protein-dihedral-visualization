@@ -22,3 +22,4 @@ alphafold_predictions
 casp_cache
 casp_da
 ml_runs
+*.fasta

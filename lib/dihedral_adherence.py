@@ -252,6 +252,8 @@ class DihedralAdherence():
                     break
             print('No CASP AlphaFold prediction')
         if self.af_phi_psi is not None:
+            if 'conf' in self.phi_psi_predictions.columns:
+                self.phi_psi_predictions = self.phi_psi_predictions.drop(columns='conf')
             self.phi_psi_predictions = self.phi_psi_predictions.merge(self.af_phi_psi[['seq_ctxt', 'conf']], on='seq_ctxt', how='left')
         else:
             self.phi_psi_predictions['conf'] = np.nan
