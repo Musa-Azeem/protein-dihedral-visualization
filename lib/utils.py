@@ -328,6 +328,9 @@ def get_find_target(ins):
         case 'full_window':
             xray_da_fn = 'xray_phi_psi_da_window.csv'
             pred_da_fn = 'phi_psi_predictions_da_window.csv'
+
+            # In this case, use a different method, not "get_da_for_all_predictions" like for others
+            # Therefore, find_target is not used
             def find_target_wrapper(phi_psi_dist, bw_method):
-                raise NotImplementedError('Full Window not implemented yet')
+                raise NotImplementedError('Full Window Mode does implement find_target')
     return find_target_wrapper, Path(xray_da_fn), Path(pred_da_fn)

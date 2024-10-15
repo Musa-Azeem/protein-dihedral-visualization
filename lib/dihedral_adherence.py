@@ -17,6 +17,7 @@ from lib.modules import (
     seq_filter,
     get_da_for_all_predictions,
     fit_linregr,
+    get_da_for_all_predictions_window
 )
 from lib.plotting import (
     plot_one_dist,
@@ -175,8 +176,13 @@ class DihedralAdherence():
             return
         if da_scale is None:
             da_scale = [math.log2(i)+1 for i in self.kdews]
-        get_da_for_all_predictions(self, replace, da_scale)
-        # get_da_for_all_predictions_ml(self, replace, da_scale)
+        
+        if self.mode == 'full_window':
+            get_da_for_all_predictions_window(self, replace)
+        else:
+            # for all other modes
+            get_da_for_all_predictions(self, replace, da_scale)
+            # get_da_for_all_predictions_ml(self, replace, da_scale)
         self._get_grouped_preds()
     
     @property
