@@ -18,7 +18,9 @@ AMINO_ACID_CODES = {
     "THR": "T",
     "TRP": "W",
     "TYR": "Y",
-    "VAL": "V"
+    "VAL": "V",
+
+    "MSE": "M", # Selenomethionine - modified from methionine
 }
 
 AMINO_ACID_CODES_INV = {v: k for k, v in AMINO_ACID_CODES.items()}

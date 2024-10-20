@@ -6,9 +6,10 @@ from lib.retrieve_data import (
     retrieve_pdb_file, 
     retrieve_casp_predictions, 
     retrieve_casp_results,
-    retrieve_alphafold_prediction
+    retrieve_alphafold_prediction,
+    get_pdb_code
 )
-from lib.utils import get_seq_funcs, check_alignment, compute_rmsd, get_find_target
+from lib.utils import get_seq_funcs, check_alignment, compute_rmsd, get_find_target, test_correlation
 from lib.modules import (
     get_phi_psi_xray,
     get_phi_psi_predictions,
@@ -16,17 +17,19 @@ from lib.modules import (
     seq_filter,
     get_da_for_all_predictions,
     fit_linregr,
+    get_da_for_all_predictions_window
 )
 from lib.plotting import (
     plot_one_dist,
     plot_one_dist_3d,
     plot_da_for_seq,
     plot_res_vs_da,
-    plot_da_vs_rmsd,
+    plot_da_vs_gdt,
     plot_heatmap,
-    plot_da_vs_rmsd_simple,
+    plot_da_vs_gdt_simple,
     plot_res_vs_da_1plot,
-    plot_dist_kde
+    plot_dist_kde,
+    plot_one_dist_scatter
 )
 from lib.constants import AMINO_ACID_CODES, AMINO_ACID_CODES_INV, AMINO_ACID_CODE_NAMES
 import pandas as pd
@@ -41,7 +44,7 @@ class DihedralAdherence():
     def __init__(
             self, casp_protein_id, winsizes, pdbmine_url, 
             projects_dir='tests',
-            kdews=None, mode='kde',
+            kdews=None, mode='kde', quantile=1,
             model=None, ml_lengths=[4096, 512, 256, 256], weights_file='ml_data/best_model.pt', device='cpu',
             pdbmine_cache_dir='casp_cache',
         ):
@@ -59,16 +62,17 @@ class DihedralAdherence():
 
         # Get targetlist and corresponding pdbcode
         targetlist = retrieve_target_list()
-        self.pdb_code = targetlist.loc[casp_protein_id, 'pdb_code']
-        if self.pdb_code == '':
-            raise ValueError(f'No PDB code found for {casp_protein_id}')
+        self.pdb_code, self.is_domain = get_pdb_code(casp_protein_id, targetlist)
         self.alphafold_id = f'{casp_protein_id}TS427_1'
+        if self.is_domain:
+            id, domain = casp_protein_id.split('-')
+            self.alphafold_id = f'{id}TS427_1-{domain}'
         print('Casp ID:', casp_protein_id, '\tPDB:', self.pdb_code)
 
         # Retrieve results and pdb files for xray and predictions
         self.results = retrieve_casp_results(casp_protein_id)
         self.xray_fn, self.sequence = retrieve_pdb_file(self.pdb_code)
-        self.predictions_dir = retrieve_casp_predictions(casp_protein_id)
+        self.predictions_dir = retrieve_casp_predictions(casp_protein_id, self.is_domain)
         self.af_fn = retrieve_alphafold_prediction(self.pdb_code)
 
         # Get sequence and sequence context functions
@@ -85,7 +89,7 @@ class DihedralAdherence():
         self.model = None
 
         self.bw_method = None
-        self.quantile = 1
+        self.quantile = quantile
         self.kdews = [1] * len(winsizes) if kdews is None else kdews
 
         self.queries = []
@@ -156,10 +160,10 @@ class DihedralAdherence():
     def query_pdbmine(self, replace=False):
         for query in self.queries:
             if replace or not (self.outdir / f'phi_psi_mined_win{query.winsize}.csv').exists():
-                query.query_and_process_pdbmine()
-                query.results.to_csv(self.outdir / f'phi_psi_mined_win{query.winsize}.csv', index=False)
+                query.query_and_process_pdbmine(self.outdir)
+                # query.results.to_csv(self.outdir / f'phi_psi_mined_win{query.winsize}.csv', index=False)
             else:
-                query.results = pd.read_csv(self.outdir / f'phi_psi_mined_win{query.winsize}.csv')
+                query.load_results(self.outdir)
                 query.results['weight'] = query.weight
         self.queried = True
 
@@ -172,8 +176,13 @@ class DihedralAdherence():
             return
         if da_scale is None:
             da_scale = [math.log2(i)+1 for i in self.kdews]
-        get_da_for_all_predictions(self, replace, da_scale)
-        # get_da_for_all_predictions_ml(self, replace, da_scale)
+        
+        if self.mode == 'full_window':
+            get_da_for_all_predictions_window(self, replace)
+        else:
+            # for all other modes
+            get_da_for_all_predictions(self, replace, da_scale)
+            # get_da_for_all_predictions_ml(self, replace, da_scale)
         self._get_grouped_preds()
     
     @property
@@ -202,7 +211,8 @@ class DihedralAdherence():
 
     def load_results(self):
         for query in self.queries:
-            query.results = pd.read_csv(self.outdir / f'phi_psi_mined_win{query.winsize}.csv')
+            query.load_results(self.outdir)
+            # query.results = pd.read_csv(self.outdir / f'phi_psi_mined_win{query.winsize}.csv')
             query.results['weight'] = query.weight
         self.queried = True
         self.xray_phi_psi = pd.read_csv(self.outdir / 'xray_phi_psi.csv')
@@ -211,11 +221,13 @@ class DihedralAdherence():
             self.af_phi_psi = pd.read_csv(self.outdir / 'af_phi_psi.csv')
         else:
             print('No AlphaFold phi-psi data found')
+        seq_filter(self)
         self.get_results_metadata()
         
     def load_results_da(self):
         for query in self.queries:
-            query.results = pd.read_csv(self.outdir / f'phi_psi_mined_win{query.winsize}.csv')
+            # query.results = pd.read_csv(self.outdir / f'phi_psi_mined_win{query.winsize}.csv')
+            query.load_results(self.outdir)
             if query.results['weight'].values[0] != query.weight:
                 print('WARNING: Weights used to calculate DA are different')
             query.results['weight'] = query.weight
@@ -226,6 +238,7 @@ class DihedralAdherence():
             self.af_phi_psi = pd.read_csv(self.outdir / 'af_phi_psi.csv')
         else:
             print('No AlphaFold phi-psi data found')
+        seq_filter(self)
         self.get_results_metadata()
         self._get_grouped_preds()
 
@@ -238,7 +251,18 @@ class DihedralAdherence():
         self.seqs = self.xray_phi_psi.seq_ctxt.unique()
         self.protein_ids = self.phi_psi_predictions.protein_id.unique()
         if not self.alphafold_id in self.protein_ids:
+            for i in range(2, 6):
+                af_id = f'{self.casp_protein_id}TS427_{i}'
+                if af_id in self.protein_ids:
+                    self.alphafold_id = af_id
+                    break
             print('No CASP AlphaFold prediction')
+        if self.af_phi_psi is not None:
+            if 'conf' in self.phi_psi_predictions.columns:
+                self.phi_psi_predictions = self.phi_psi_predictions.drop(columns='conf')
+            self.phi_psi_predictions = self.phi_psi_predictions.merge(self.af_phi_psi[['seq_ctxt', 'conf']], on='seq_ctxt', how='left')
+        else:
+            self.phi_psi_predictions['conf'] = np.nan
         return self.overlapping_seqs, self.seqs, self.protein_ids
     
     def fit_model(self):
@@ -255,6 +279,7 @@ class DihedralAdherence():
     
     def split_and_compute_rmsd(self, pred_id=None, split=None, print_alignment=True):
         # split should be int, tuple, list of ints or list of tuples
+        # if list of tuples, each tuple should be (pos_xray, pos_pred)
         if pred_id is None:
             pred_id = self.protein_ids[0]
         
@@ -304,6 +329,12 @@ class DihedralAdherence():
             print(f'Mean RMSD: {np.mean(rmsds):.3f}')
             return rmsds, n, rmsd_inner
     
+    def test_correlation(self):
+        if not 'da' in self.phi_psi_predictions.columns:
+            print('No DA data available. Run compute_das() or load_results_da() first')
+            return
+        return test_correlation(self)
+    
     def plot_one_dist(self, seq=None, pred_id=None, pred_name=None, axlims=None, bw_method=-1, fn=None):
         seq = seq or self.overlapping_seqs[0]
         pred_id = pred_id or self.protein_ids[0]
@@ -350,27 +381,27 @@ class DihedralAdherence():
         protein_id = pred_id or self.protein_ids[0]
         return plot_res_vs_da_1plot(self, protein_id, pred_name, highlight_res, limit_quantile, legend_loc, fn, text_loc, rmsds)
     
-    def plot_da_vs_rmsd(self, axlims=None, fn=None):
+    def plot_da_vs_gdt(self, axlims=None, fn=None):
         if not 'da' in self.phi_psi_predictions.columns:
             print('No DA data available. Run compute_das() or load_results_da() first')
             return
-        if not 'rms_pred' in self.grouped_preds.columns:
+        if not 'gdt_pred' in self.grouped_preds.columns:
             self.fit_model()
         else:
             print(f'Model R-squared: {self.model.rsquared:.6f}, Adj R-squared: {self.model.rsquared_adj:.6f}, p-value: {self.model.f_pvalue}')
-        plot_da_vs_rmsd(self, axlims, fn)
+        plot_da_vs_gdt(self, axlims, fn)
     
-    def plot_da_vs_rmsd_simple(self, axlims=None, fn=None):
+    def plot_da_vs_gdt_simple(self, axlims=None, fn=None):
         if not 'da' in self.phi_psi_predictions.columns:
             print('No DA data available. Run compute_das() or load_results_da() first')
             return
-        plot_da_vs_rmsd_simple(self, axlims, fn)
+        plot_da_vs_gdt_simple(self, axlims, fn)
     
-    def plot_heatmap(self, fillna=False, fn=None):
+    def plot_heatmap(self, fillna=False, fillna_row=True, fn=None):
         if not 'da' in self.phi_psi_predictions.columns:
             print('No DA data available. Run compute_das() or load_results_da() first')
             return
-        plot_heatmap(self, fillna, fn)
+        plot_heatmap(self, fillna, fillna_row, fn)
     
     def plot_dist_kde(self, pred_id=None, percentile=None, fn=None):
         if not 'da' in self.phi_psi_predictions.columns:
@@ -380,29 +411,33 @@ class DihedralAdherence():
         percentile = percentile or 0.95
         plot_dist_kde(self, protein_id, percentile, fn)
     
+    def plot_one_dist_scatter(self, seq=None, fn=None):
+        seq = seq or self.overlapping_seqs[0]
+        plot_one_dist_scatter(self, seq, fn)
+    
     def get_id(self, group_id):
         return f'{self.casp_protein_id}TS{group_id}'
     def _get_grouped_preds(self):
+        # GDT_TS - GlobalDistanceTest_TotalScore
+        # GDT_TS = (GDT_P1 + GDT_P2 + GDT_P4 + GDT_P8)/4,
+        # where GDT_Pn denotes percent of residues under distance cutoff <= nÅ
         self.phi_psi_predictions['da_na'] = self.phi_psi_predictions.da.isna()
-        def agg_da(x):
-            x = x[x < x.quantile(self.quantile)]
-            return x.agg('mean')
-        self.grouped_preds = self.phi_psi_predictions.groupby('protein_id', as_index=False).agg(
-            # da=('da', lambda x: x[x < x.quantile(self.quantile)].agg('mean')), 
-            da=('da', agg_da), 
-            da_std=('da', lambda x: x[x < x.quantile(self.quantile)].agg('std')),
-            da_na=('da_na', lambda x: x.sum() / len(x)),
-        )
+
+        # agg = lambda g: (g.da * g.conf).sum() / g.conf.sum()
+        # self.grouped_preds = self.phi_psi_predictions.groupby('protein_id').apply(agg, include_groups=False).to_frame('da')
+        self.grouped_preds = self.phi_psi_predictions.groupby('protein_id').da.mean().to_frame('da')
+        self.grouped_preds['da_na'] = self.phi_psi_predictions[['protein_id', 'da_na']].groupby('protein_id').mean()
         self.grouped_preds = pd.merge(
-            self.grouped_preds,
-            self.results[['Model', 'RMS_CA']],
+            self.grouped_preds.reset_index(),
+            self.results[['Model', 'GDT_TS']],
             left_on='protein_id',
             right_on='Model',
             how='inner'
         )
+        self.grouped_preds['log_da'] = np.log10(self.grouped_preds['da'])
         self.grouped_preds['target'] = self.casp_protein_id
         self.grouped_preds_da = self.phi_psi_predictions.pivot(index='protein_id', columns='pos', values='da')
 
-    def filter_nas(self, quantile=0.9):
-        self.grouped_preds = self.grouped_preds[self.grouped_preds.da_na < self.grouped_preds.da_na.quantile(quantile)]
+    def filter_nas(self, quantile=0.8):
+        self.grouped_preds = self.grouped_preds[self.grouped_preds.da_na <= self.grouped_preds.da_na.quantile(quantile)]
         self.grouped_preds_da = self.grouped_preds_da.loc[self.grouped_preds.protein_id]

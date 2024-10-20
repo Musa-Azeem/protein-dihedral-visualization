@@ -5,6 +5,7 @@ from Bio.Align import PairwiseAligner
 from scipy.stats import gaussian_kde
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
+from scipy.stats import pearsonr, linregress
 import pandas as pd
 import numpy as np
 from lib.constants import AMINO_ACID_CODES
@@ -245,6 +246,7 @@ def compute_rmsd(fnA, fnB, startA=None, endA=None, startB=None, endB=None, print
 
     residuesA = ''.join([AMINO_ACID_CODES.get(r.resname, 'X') for r in chainA.get_residues()])[startA:endA]
     residuesB = ''.join([AMINO_ACID_CODES.get(r.resname, 'X') for r in chainB.get_residues()])[startB:endB]
+    print(len(residuesA), len(residuesB)   )
     aligner = PairwiseAligner()
     aligner.mode = 'global'
     alignments =  aligner.align(residuesA, residuesB)
@@ -282,6 +284,16 @@ def compute_rmsd(fnA, fnB, startA=None, endA=None, startB=None, endB=None, print
         return sup.rms, len(atomsA), dist
     return sup.rms
 
+def test_correlation(ins):
+    grouped_preds = ins.grouped_preds.dropna(subset=['log_da', 'GDT_TS'])
+    regr = linregress(grouped_preds.log_da, grouped_preds.GDT_TS)
+    print(f'LinRegr - Slope: {regr.slope}, Intercept: {regr.intercept}', 'R-squared:', regr.rvalue**2, 'p-value:', regr.pvalue)
+
+    corr, pval = pearsonr(grouped_preds.log_da, grouped_preds.GDT_TS)
+    print(f'Pearson Correlation: {corr}, p-value: {pval}')
+
+    return (regr.rvalue**2, corr)
+
 def get_find_target(ins):
     xray_da_fn = 'xray_phi_psi_da.csv'
     pred_da_fn = 'phi_psi_predictions_da.csv'
@@ -307,10 +319,18 @@ def get_find_target(ins):
             def find_target_wrapper(phi_psi_dist, bw_method):
                 af = get_af(phi_psi_dist.seq.values[0])
                 return find_kdepeak_af(phi_psi_dist, bw_method, af)
-        case 'weighted_kde_af':
-            xray_da_fn = 'xray_phi_psi_da_afw.csv'
-            pred_da_fn = 'phi_psi_predictions_da_afw.csv'
+        case 'af':
+            xray_da_fn = 'xray_phi_psi_da_afonly.csv'
+            pred_da_fn = 'phi_psi_predictions_da_afonly.csv'
             def find_target_wrapper(phi_psi_dist, bw_method):
                 af = get_af(phi_psi_dist.seq.values[0])
-                return find_kdepeak_af(phi_psi_dist, bw_method, af, find_peak=find_kdepeak_w)
+                return af[['phi', 'psi']].iloc[0] if af.shape[0] > 0 else find_kdepeak(phi_psi_dist, bw_method)
+        case 'full_window':
+            xray_da_fn = 'xray_phi_psi_da_window.csv'
+            pred_da_fn = 'phi_psi_predictions_da_window.csv'
+
+            # In this case, use a different method, not "get_da_for_all_predictions" like for others
+            # Therefore, find_target is not used
+            def find_target_wrapper(phi_psi_dist, bw_method):
+                raise NotImplementedError('Full Window Mode does implement find_target')
     return find_target_wrapper, Path(xray_da_fn), Path(pred_da_fn)

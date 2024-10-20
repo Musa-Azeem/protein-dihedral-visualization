@@ -26,6 +26,12 @@ def get_da_for_all_predictions_(ins, da_scale, scale_das=True, bw_method=None):
             print(f'\tSkipping {seq} - X in sequence')
             continue
 
+        if ins.af_phi_psi is not None:
+            af = ins.af_phi_psi.loc[ins.af_phi_psi.seq_ctxt == seq]
+            if len(af) > 0:
+                if af['conf'].values[0] < 50:
+                    print(f'\tSkipping {seq} - low confidence')
+
         phi_psi_dist, info = get_phi_psi_dist(ins.queries, seq)
         for i in info:
             print(f'\tWin {i[0]}: {i[1]} - {i[2]} samples')

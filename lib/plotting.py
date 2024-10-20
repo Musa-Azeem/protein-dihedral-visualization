@@ -10,6 +10,22 @@ from lib.utils import calc_da, calc_da_for_one, get_phi_psi_dist
 
 colors = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple', 'tab:brown', 'tab:pink', 'tab:gray', 'tab:olive', 'tab:cyan']
 
+def plot_one_dist_scatter(ins, seq, fn):
+    phi_psi_dist, info = get_phi_psi_dist(ins.queries, seq)
+    xray_phi_psi = ins.xray_phi_psi[ins.xray_phi_psi.seq_ctxt == seq]
+    sns.scatterplot(data=phi_psi_dist, x='phi', y='psi', hue='winsize', alpha=0.8, palette='Dark2')
+    plt.scatter(xray_phi_psi.phi, xray_phi_psi.psi, color='red', marker='x', label='X-ray')
+    plt.xlim(-180, 180)
+    plt.ylim(-180, 180)
+    plt.title(f'PDBMine Distribution of Dihedral Angles for Residue {xray_phi_psi.res.values[0]} of Window {seq}')
+    plt.xlabel('Phi')
+    plt.ylabel('Psi')
+    plt.legend()
+    plt.tight_layout()
+    if fn:
+        plt.savefig(fn, bbox_inches='tight', dpi=300)
+    plt.show()
+
 def plot_one_dist(ins, seq, pred_id, pred_name, axlims, bw_method, fn):
     pred_name = pred_name or pred_id[5:]
     bw_method = bw_method if bw_method != -1 else ins.bw_method
@@ -95,6 +111,10 @@ def plot_da_for_seq(ins, seq, pred_id, pred_name, bw_method, axlims, fn, fill, s
     pred = ins.phi_psi_predictions[(ins.phi_psi_predictions.protein_id == pred_id) & (ins.phi_psi_predictions.seq_ctxt == seq)]
     preds = ins.phi_psi_predictions[ins.phi_psi_predictions.seq_ctxt == seq]
     alphafold = ins.phi_psi_predictions[(ins.phi_psi_predictions.protein_id == ins.alphafold_id) & (ins.phi_psi_predictions.seq_ctxt == seq)]
+    has_af = True
+    if alphafold.shape[0] == 0:
+        print('No AlphaFold data for this window')
+        has_af = False
 
     if xray.shape[0] == 0:
         print('No xray data for this window')
@@ -114,16 +134,18 @@ def plot_da_for_seq(ins, seq, pred_id, pred_name, bw_method, axlims, fn, fill, s
 
     target = ins.find_target(phi_psi_dist, bw_method=bw_method)
 
-    # Mahalanobis distance to most common cluster
+    # Distance to most common cluster
     da_xray = calc_da_for_one(target[['phi', 'psi']].values, xray[['phi','psi']].values[0])
     da_pred = calc_da_for_one(target[['phi', 'psi']].values, pred[['phi','psi']].values[0])
-    da_alphafold = calc_da_for_one(target[['phi', 'psi']].values, alphafold[['phi','psi']].values[0])
     da_preds = calc_da(target[['phi', 'psi']].values, preds[['phi','psi']].values)
+    if has_af:
+        da_alphafold = calc_da_for_one(target[['phi', 'psi']].values, alphafold[['phi','psi']].values[0])
 
     print(f'Ideal:\t ({target.phi:.02f}, {target.psi:.02f})')
     print(f'X-ray[{pos}]:\t ({xray.phi.values[0]:.02f}, {xray.psi.values[0]:.02f}), DA={da_xray:.02f}')
     print(f'{pred_name}[{pred.pos.values[0]}]:\t ({pred.phi.values[0]:.02f}, {pred.psi.values[0]:.02f}), DA={da_pred:.02f}')
-    print(f'AlphaFold[{alphafold.pos.values[0]}]:\t ({alphafold.phi.values[0]:.02f}, {alphafold.psi.values[0]:.02f}), DA={da_alphafold:.02f}')
+    if has_af:
+        print(f'AlphaFold[{alphafold.pos.values[0]}]:\t ({alphafold.phi.values[0]:.02f}, {alphafold.psi.values[0]:.02f}), DA={da_alphafold:.02f}')
     print('Other Predictions DA:\n', pd.DataFrame(da_preds).describe())
 
     fig, ax = plt.subplots(figsize=(9,7))
@@ -138,13 +160,15 @@ def plot_da_for_seq(ins, seq, pred_id, pred_name, bw_method, axlims, fn, fill, s
     ax.scatter(preds.phi, preds.psi, color='black', marker='o', s=5, alpha=0.2, label='All Other CASP-14 Predictions', zorder=1)
     ax.scatter(xray.iloc[0].phi, xray.iloc[0].psi, color=colors[1], marker='o', label='X-ray', zorder=10, s=100)
     ax.scatter(pred.phi, pred.psi,  color=colors[2], marker='o', label=pred_name, zorder=10, s=100)
-    ax.scatter(alphafold.phi, alphafold.psi, color=colors[4], marker='o', label='AlphaFold', zorder=10, s=100)
-    ax.scatter(target.phi, target.psi, color='red', marker='X', label='KDE Peak', s=200, linewidths=0.1)
+    if has_af:
+        ax.scatter(alphafold.phi, alphafold.psi, color=colors[4], marker='o', label='AlphaFold', zorder=10, s=100)
+    ax.scatter(target.phi, target.psi, color='red', marker='X', label='PDBMine Target', s=200, linewidths=0.1)
 
     # dotted line from each point to mean
     ax.plot([xray.phi.values[0], target.phi], [xray.psi.values[0], target.psi], linestyle='dashed', color=colors[1], zorder=1, linewidth=1)
     ax.plot([pred.phi.values[0], target.phi], [pred.psi.values[0], target.psi], linestyle='dashed', color=colors[2], zorder=1, linewidth=1)
-    ax.plot([alphafold.phi.values[0], target.phi], [alphafold.psi.values[0], target.psi], linestyle='dashed', color=colors[4], zorder=1, linewidth=1)
+    if has_af:
+        ax.plot([alphafold.phi.values[0], target.phi], [alphafold.psi.values[0], target.psi], linestyle='dashed', color=colors[4], zorder=1, linewidth=1)
 
     ax.set_xlabel('Phi', fontsize=12)
     ax.set_ylabel('Psi', fontsize=12)
@@ -228,25 +252,23 @@ def plot_res_vs_da(ins, pred_id, pred_name, highlight_res, limit_quantile, legen
 
     return both
 
-def plot_da_vs_rmsd(ins, axlims, fn):
-    regr = linregress(ins.grouped_preds.rms_pred, ins.grouped_preds.RMS_CA)
+def plot_da_vs_gdt(ins, axlims, fn):
+    regr = linregress(ins.grouped_preds.gdt_pred, ins.grouped_preds.GDT_TS)
 
     sns.set_theme(style="whitegrid")
     sns.set_palette("pastel")
     fig, ax = plt.subplots(figsize=(8, 8))
 
-    sns.scatterplot(data=ins.grouped_preds, x='rms_pred', y='RMS_CA', ax=ax, marker='o', s=25, edgecolor='b', legend=True)
+    sns.scatterplot(data=ins.grouped_preds, x='gdt_pred', y='GDT_TS', ax=ax, marker='o', s=25, edgecolor='b', legend=True)
     ax.plot(
-        np.linspace(0, ins.grouped_preds.rms_pred.max() + 5, 100), 
-        regr.intercept + regr.slope * np.linspace(0, ins.grouped_preds.rms_pred.max() + 5, 100), 
+        np.linspace(0, ins.grouped_preds.gdt_pred.max() + 5, 100), 
+        regr.intercept + regr.slope * np.linspace(0, ins.grouped_preds.gdt_pred.max() + 5, 100), 
         color='red', lw=2, label='Regression Line'
     )
-    # sns.regplot(data=ins.grouped_preds, x='rms_pred', y='RMS_CA', ax=ax, scatter=False, 
-    #             color='red', ci=False, label='Regression Line', line_kws={'lw':2})
 
     ax.set_xlabel('Regression-Aggregated Dihedral Adherence Score', fontsize=14, labelpad=15)
-    ax.set_ylabel('Prediction Backbone RMSD', fontsize=14, labelpad=15)
-    ax.set_title(r'Aggregated Dihedral Adherence vs RMSD ($C_{\alpha}$) for each prediction', fontsize=16, pad=20)
+    ax.set_ylabel('Prediction GDT', fontsize=14, labelpad=15)
+    ax.set_title(r'Aggregated Dihedral Adherence vs GDT ($C_{\alpha}$) for each prediction', fontsize=16, pad=20)
     ax.text(0.85, 0.10, r'$R^2$='+f'{ins.model.rsquared:.3f}', transform=ax.transAxes, fontsize=12,
             verticalalignment='top', bbox=dict(boxstyle='round,pad=0.5', edgecolor='black', facecolor='white'))
     
@@ -263,26 +285,28 @@ def plot_da_vs_rmsd(ins, axlims, fn):
 
     sns.reset_defaults()
 
-def plot_heatmap(ins, fillna, fn):
+def plot_heatmap(ins, fillna, fillna_row, fn):
     cmap = sns.color_palette("rocket", as_cmap=True)
     fig, ax = plt.subplots(1,1, figsize=(5,5))
     ins.grouped_preds = ins.grouped_preds.sort_values('protein_id')
     ins.grouped_preds_da = ins.grouped_preds_da.sort_index()
     df = ins.grouped_preds_da.copy()
-    df['rmsd'] = ins.grouped_preds['RMS_CA'].values
-    df = df.sort_values('rmsd')
-    af_idx = df.index.get_loc(ins.alphafold_id)
+    df['gdt'] = ins.grouped_preds['GDT_TS'].values
+    df = df.sort_values('gdt', ascending=False)
     # print(ins.grouped_preds[ins.grouped_preds.protein_id == ins.alphafold_id])
     X = df.iloc[:, :-1].values
-    X = np.where(np.isnan(X), np.nanmean(X,axis=0), X)
+    if fillna_row:
+        X = np.where(np.isnan(X), np.nanmean(X,axis=0), X)
     if fillna:
         X[np.isnan(X)] = 0 # for entire column nan
     sns.heatmap(X, ax=ax, cmap=cmap)
 
-    ax.set_xlabel('Residue Position', fontsize=10)
-    ax.set_yticks([af_idx + 0.5])
-    ax.set_yticklabels([f'Alpha\nFold'], fontsize=7)
+    # af_idx = df.index.get_loc(ins.alphafold_id)
+    # ax.set_yticks([af_idx + 0.5])
+    # ax.set_yticklabels([f'Alpha\nFold'], fontsize=7)
+    
     ax.set_ylabel('Prediction', fontsize=10)
+    ax.set_xlabel('Residue Position', fontsize=10)
     ax.set_xticks([])
     ax.set_xticklabels([])
 
@@ -297,46 +321,49 @@ def plot_heatmap(ins, fillna, fn):
     plt.show()
 
 
-def plot_da_vs_rmsd_simple(ins, axlims, fn):
-    grouped_preds = ins.grouped_preds.dropna()
-    # grouped_preds = grouped_preds[grouped_preds.RMS_CA < 40]
-    # grouped_preds = grouped_preds[grouped_preds.RMS_CA < 30]
-    regr = linregress(grouped_preds.da, grouped_preds.RMS_CA)
-    print(f'Slope: {regr.slope}, Intercept: {regr.intercept}')
+def plot_da_vs_gdt_simple(ins, axlims, fn):
+    grouped_preds = ins.grouped_preds.dropna(subset=['log_da','GDT_TS'])
+    # grouped_preds = grouped_preds[grouped_preds.GDT_TS < 40]
+    # grouped_preds = grouped_preds[grouped_preds.GDT_TS < 30]
+    # regr = linregress(grouped_preds.da, grouped_preds.GDT_TS)
+    regr = linregress(grouped_preds.log_da, grouped_preds.GDT_TS)
+    print(f'Slope: {regr.slope}, Intercept: {regr.intercept}', 'R-squared:', regr.rvalue**2)
 
     af = grouped_preds[grouped_preds.protein_id == ins.alphafold_id]
-    xray_da = ins.xray_phi_psi.da.mean()
-
+    xray_da = np.log10(ins.xray_phi_psi.da.mean())
 
     sns.set_theme(style="whitegrid")
     sns.set_palette("pastel")
     fig, ax = plt.subplots(figsize=(8, 6.5))
-    sns.scatterplot(data=grouped_preds, x='da', y='RMS_CA', ax=ax, marker='o', s=25, edgecolor='b', legend=True)
-    ax.scatter(af.da, af.RMS_CA, color='red', marker='x', label='AlphaFold', zorder=10)
-    ax.scatter(xray_da, 0, color='green', marker='x', label='X-ray', zorder=10)
+
+    sns.scatterplot(data=grouped_preds, x='log_da', y='GDT_TS', ax=ax, marker='o', s=25, edgecolor='b', legend=True)
+    ax.scatter(af.log_da, af.GDT_TS, color='red', marker='x', label='AlphaFold', zorder=10)
+    ax.scatter(xray_da, 100, color='green', marker='x', label='X-ray', zorder=10)
     ax.plot(
-        np.linspace(0, grouped_preds.da.max() + 5, 100), 
-        regr.intercept + regr.slope * np.linspace(0, grouped_preds.da.max() + 5, 100), 
+        np.linspace(0, grouped_preds.log_da.max() + 5, 100), 
+        regr.intercept + regr.slope * np.linspace(0, grouped_preds.log_da.max() + 5, 100), 
         color='red', lw=2, label='Regression Line'
     )
 
     ax.set_xlabel('Total Dihedral Adherence Score', fontsize=14, labelpad=15)
-    ax.set_ylabel('Prediction Backbone RMSD', fontsize=14, labelpad=15)
-    ax.set_title(r'RMSD ($C_{\alpha}$) vs Total Dihedral Adherence for Each Prediction of '+ins.pdb_code, fontsize=16, pad=20)
+    ax.set_ylabel('Prediction GDT', fontsize=14, labelpad=15)
+    ax.set_title(r'GDT ($C_{\alpha}$) vs Total Dihedral Adherence for Each Prediction of '+ins.pdb_code, fontsize=16, pad=20)
     ax.text(0.83, 0.10, r'$R^2$='+f'{regr.rvalue**2:.3f}', transform=ax.transAxes, fontsize=14,
             verticalalignment='top', bbox=dict(boxstyle='round,pad=0.5', edgecolor='black', facecolor='white'))
     if regr.intercept > 0:
         s = f'y = {regr.slope:.1E}x + {regr.intercept:.1f}'
     else:
         s = f'y = {regr.slope:.1E}x - {-regr.intercept:.1f}'
-    ax.text(.025,.76, s, transform=ax.transAxes, fontsize=12, color='red',
+    ax.text(.72,.76, s, transform=ax.transAxes, fontsize=12, color='red',
             bbox=dict(boxstyle='round,pad=0.4', edgecolor='red', facecolor='white'))
     if axlims:
         ax.set_xlim(axlims[0][0], axlims[0][1])
         ax.set_ylim(axlims[1][0], axlims[1][1])
     else:
-        ax.set_xlim(0, grouped_preds.da.max() + 5)
-        ax.set_ylim(-0.5, grouped_preds.RMS_CA.max() + 5)
+        ax.set_xlim(grouped_preds.log_da.min() - 0.1, grouped_preds.log_da.max() + 0.1)
+        ax.set_ylim(-0.5, grouped_preds.GDT_TS.max() + 5)
+        ax.set_ylim(-0.5, grouped_preds.GDT_TS.max() + 5)
+        # ax.set_ylim(0, 105)
 
     plt.legend(fontsize=12)
     plt.tight_layout()

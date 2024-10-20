@@ -6,7 +6,7 @@ def fit_linregr(ins):
     ins.grouped_preds = ins.grouped_preds.sort_values('protein_id')
     ins.grouped_preds_da = ins.grouped_preds_da.sort_values('protein_id')
     X = ins.grouped_preds_da.values
-    y = ins.grouped_preds.RMS_CA.values
+    y = ins.grouped_preds.GDT_TS.values
     X[np.isnan(X)] = 0
 
     if X.shape[1] > X.shape[0]:
@@ -17,4 +17,4 @@ def fit_linregr(ins):
 
     print(f'Model R-squared: {ins.model.rsquared:.6f}, Adj R-squared: {ins.model.rsquared_adj:.6f}, p-value: {ins.model.f_pvalue}')
 
-    ins.grouped_preds['rms_pred'] = ins.model.predict(X)
+    ins.grouped_preds['gdt_pred'] = ins.model.predict(X)
