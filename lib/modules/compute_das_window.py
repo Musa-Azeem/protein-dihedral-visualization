@@ -12,6 +12,7 @@ from lib.across_window_utils import (
 from lib.utils import get_phi_psi_dist
 import numpy as np
 import pandas as pd
+from pathlib import Path
 
 def get_da_for_all_predictions_window(ins, replace):
     if replace or not Path(ins.outdir / ins.pred_da_fn).exists():
@@ -69,7 +70,7 @@ def get_da_for_all_predictions_window_(ins):
             continue
 
         precomputed_dists = precompute_dists(phi_psi_dist.iloc[:,:q.winsize*2])
-        n_clusters, clusters = find_clusters(phi_psi_dist, precomputed_dists)
+        n_clusters, clusters = find_clusters(precomputed_dists)
         precomputed_dists, phi_psi_dist, clusters = filter_precomputed_dists(precomputed_dists, phi_psi_dist, clusters)
 
         if n_clusters == 0:

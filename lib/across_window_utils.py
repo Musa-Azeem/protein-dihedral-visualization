@@ -54,7 +54,7 @@ def precompute_dists(phi_psi_dist):
     precomputed_dists = np.linalg.norm(diff(phi_psi_dist.values[:,np.newaxis], phi_psi_dist.values), axis=2)
     return precomputed_dists
 
-def find_clusters(phi_psi_dist, precomputed_dists, min_cluster_size=20):
+def find_clusters(precomputed_dists, min_cluster_size=20):
     precomputed_dists = precomputed_dists.copy()
     # phi_psi_dist['cluster'] = HDBSCAN(min_cluster_size=20, min_samples=5, metric='precomputed').fit(precomputed_dists).labels_
     clusters = HDBSCAN(
