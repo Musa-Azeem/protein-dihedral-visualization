@@ -22,19 +22,21 @@ def get_xrays_window(ins, q, seq_ctxt, return_df=False):
 
 def get_afs_window(ins, q, seq_ctxt, return_df=False):
     center_idx = q.get_center_idx_pos()
-    af_pos = ins.af_phi_psi[ins.af_phi_psi.seq_ctxt == seq_ctxt].pos.iloc[0]
+    af_pos = ins.af_phi_psi[ins.af_phi_psi.seq_ctxt == seq_ctxt].pos
+    if len(af_pos) == 0:
+        return None
+    af_pos = af_pos.iloc[0]
     afs = ins.af_phi_psi[(ins.af_phi_psi.pos >= af_pos-center_idx) & (ins.af_phi_psi.pos < af_pos-center_idx+q.winsize)].copy()
     af_point = np.concatenate([afs['phi'].values, afs['psi'].values])
     if return_df:
         return af_point, afs
     return af_point
 
-
 def get_preds_window(ins, q, seq_ctxt):
     center_idx = q.get_center_idx_pos()
     pred_pos = ins.phi_psi_predictions[ins.phi_psi_predictions.seq_ctxt == seq_ctxt].pos.unique()
     if len(pred_pos) == 0:
-        print(f"No predictions for {seq_ctxt}")
+        return None
     if len(pred_pos) > 1:
         print(f"Multiple predictions for {seq_ctxt}")
         raise ValueError

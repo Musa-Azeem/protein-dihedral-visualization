@@ -55,7 +55,7 @@ def get_da_for_all_predictions_window_(ins):
         if xrays.shape[0] != q.winsize*2:
             print(f"Xray data for {seq_ctxt} is incomplete")
             continue
-        if preds.shape[0] == 0:
+        if preds is None or preds.shape[0] == 0:
             print(f"No predictions for {seq_ctxt}")
             continue
         if phi_psi_dist.shape[0] == 0:
@@ -64,7 +64,7 @@ def get_da_for_all_predictions_window_(ins):
         if phi_psi_dist.shape[0] < 100:
             print(f"Not enough pdbmine data for {seq_ctxt}")
             continue
-        if afs.shape[0] != q.winsize*2:
+        if afs is None or afs.shape[0] != q.winsize*2:
             print(f"AF data for {seq_ctxt} is incomplete")
             continue
 
@@ -72,10 +72,14 @@ def get_da_for_all_predictions_window_(ins):
         n_clusters, clusters = find_clusters(phi_psi_dist, precomputed_dists)
         precomputed_dists, phi_psi_dist, clusters = filter_precomputed_dists(precomputed_dists, phi_psi_dist, clusters)
 
+        if n_clusters == 0:
+            print(f"No clusters found for {seq_ctxt}")
+            continue
+
         xray_maha, c = calc_da_for_one_window(phi_psi_dist, xrays, precomputed_dists, clusters, afs)
         if xray_maha is None:
             print(f"Error calculating mahalanobis distance for {seq_ctxt}")
-            print(f"Cluster size: {len(phi_psi_dist[phi_psi_dist.cluster == c])}")
+            print(f"Cluster size: {(clusters == c).sum()}")
             xray_maha = np.nan
 
         # Distance from preds to xray
