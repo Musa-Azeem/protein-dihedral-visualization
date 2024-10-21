@@ -50,7 +50,7 @@ class DihedralAdherence():
         ):
         print(f'Initializing {casp_protein_id} ...')
         self.casp_protein_id = casp_protein_id
-        self.winsizes = winsizes
+        self.winsizes = np.sort(winsizes)
         self.winsize_ctxt = winsizes[-1]
         self.pdbmine_url = pdbmine_url
         self.outdir = Path(f'{projects_dir}/{casp_protein_id}_win{"-".join([str(w) for w in winsizes])}')

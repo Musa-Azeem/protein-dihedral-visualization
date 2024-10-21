@@ -11,6 +11,27 @@ def get_phi_psi_dist_window(q, seq_ctxt):
     phi_psi_dist = phi_psi_dist.dropna(axis=0)
     return phi_psi_dist
 
+def get_combined_phi_psi_dist(ins, seq_ctxt):
+    phi_psi_dist = []
+    smallest_winsize = ins.winsizes[0]
+    for q in ins.queries:
+        inner_seq = q.get_subseq(seq_ctxt)
+        matches_q = q.results_window[q.results_window.seq == inner_seq]
+        matches_q = matches_q[['match_id', 'window_pos', 'phi', 'psi']].pivot(index='match_id', columns='window_pos', values=['phi', 'psi'])
+        matches_q = matches_q.dropna(axis=0)
+        if matches_q.shape[0] == 0:
+            continue
+        matches_q.columns = [f'{c[0]}_{c[1]}' for c in matches_q.columns.to_flat_index()]
+        matches_q = matches_q[[f'phi_{i}' for i in range(smallest_winsize)]+[f'psi_{i}' for i in range(smallest_winsize)]]
+        matches_q['weight'] = q.weight
+        matches_q['winsize'] = q.winsize
+        matches_q['seq'] = inner_seq
+        phi_psi_dist.append(matches_q)
+    phi_psi_dist = pd.concat(phi_psi_dist).reset_index()
+    phi_psi_dist = phi_psi_dist.loc[phi_psi_dist.index.repeat(phi_psi_dist.weight)].reset_index(drop=True)
+    phi_psi_dist_v = phi_psi_dist[[f'phi_{i}' for i in range(smallest_winsize)]+[f'psi_{i}' for i in range(smallest_winsize)]]
+    return phi_psi_dist, phi_psi_dist_v
+
 def get_xrays_window(ins, q, seq_ctxt, return_df=False):
     center_idx = q.get_center_idx_pos()
     xray_pos = ins.xray_phi_psi[ins.xray_phi_psi.seq_ctxt == seq_ctxt].pos.iloc[0]
@@ -74,30 +95,50 @@ def filter_precomputed_dists(precomputed_dists, phi_psi_dist, clusters):
         clusters[clusters != -1]
     )
 
-def calc_da_for_one_window(phi_psi_dist, xrays, precomputed_dists, clusters, af):
+def calc_da_for_one_window(phi_psi_dist, xrays, precomputed_dists, clusters, af, metric='maha'):
     target_cluster = get_target_cluster(phi_psi_dist, clusters, af)
     cluster_medoid = get_cluster_medoid(phi_psi_dist, precomputed_dists, clusters, target_cluster)
-    icov = estimate_icov(phi_psi_dist[clusters == target_cluster], cluster_medoid)
-    if icov is None:
-        return None, target_cluster    
 
-    # xray_maha_
     xray_diff = diff(xrays, cluster_medoid)
-    xray_maha = np.sqrt(xray_diff @ icov @ xray_diff)
+    if metric == 'maha':
+        icov = estimate_icov(phi_psi_dist[clusters == target_cluster], cluster_medoid)
+        if icov is None:
+            return None, target_cluster    
 
-    return xray_maha, target_cluster
+        # print('TESTING WITH ALPHAFOLD')
+        # xray_diff = diff(xrays, af)
+        xray_da = np.sqrt(xray_diff @ icov @ xray_diff)
+    elif metric == 'euclidean':
+        xray_da = np.linalg.norm(xray_diff)
 
-def calc_da_window(phi_psi_dist, preds, precomputed_dists, clusters, af):
+    return xray_da, target_cluster
+
+def calc_da_window(phi_psi_dist, preds, precomputed_dists, clusters, af, metric='maha'):
+    target_cluster = get_target_cluster(phi_psi_dist, clusters, af)
+    cluster_medoid = get_cluster_medoid(phi_psi_dist, precomputed_dists, clusters, target_cluster)
+    preds_diff = diff(preds.values, cluster_medoid)
+
+    if metric == 'maha':
+        icov = estimate_icov(phi_psi_dist[clusters == target_cluster], cluster_medoid)
+        if icov is None:
+            return None
+
+        # Distance from preds to target
+        # print('TESTING WITH ALPHAFOLD')
+        # preds_diff = diff(preds.values, af)
+        preds_da = np.sqrt((preds_diff @ icov @ preds_diff.T).diagonal())
+    elif metric == 'euclidean':
+        preds_da = np.linalg.norm(preds_diff, axis=1)
+    return preds_da
+
+def get_target_cluster_icov(phi_psi_dist, precomputed_dists, clusters, af):
     target_cluster = get_target_cluster(phi_psi_dist, clusters, af)
     cluster_medoid = get_cluster_medoid(phi_psi_dist, precomputed_dists, clusters, target_cluster)
     icov = estimate_icov(phi_psi_dist[clusters == target_cluster], cluster_medoid)
     if icov is None:
-        return None
+        return None, None, None
+    return target_cluster, cluster_medoid, icov
 
-    # Distance from preds to target
-    preds_diff = diff(preds.values, cluster_medoid)
-    preds_maha = np.sqrt((preds_diff @ icov @ preds_diff.T).diagonal())
-    return preds_maha
 
 # Internally used
 
