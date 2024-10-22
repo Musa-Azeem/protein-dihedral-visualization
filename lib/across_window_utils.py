@@ -21,6 +21,9 @@ def get_combined_phi_psi_dist(ins, seq_ctxt):
         matches_q = matches_q.dropna(axis=0)
         if matches_q.shape[0] == 0:
             continue
+        if matches_q.shape[1] != q.winsize*2:
+            print(f"\tSkipping {inner_seq} - incomplete data")
+            continue
         matches_q.columns = [f'{c[0]}_{c[1]}' for c in matches_q.columns.to_flat_index()]
         matches_q = matches_q[[f'phi_{i}' for i in range(smallest_winsize)]+[f'psi_{i}' for i in range(smallest_winsize)]]
         matches_q['weight'] = q.weight
@@ -95,40 +98,14 @@ def filter_precomputed_dists(precomputed_dists, phi_psi_dist, clusters):
         clusters[clusters != -1]
     )
 
-def calc_da_for_one_window(phi_psi_dist, xrays, precomputed_dists, clusters, af, metric='maha'):
-    target_cluster = get_target_cluster(phi_psi_dist, clusters, af)
-    cluster_medoid = get_cluster_medoid(phi_psi_dist, precomputed_dists, clusters, target_cluster)
+def calc_da_for_one_window(xrays, target, icov):
+    xray_diff = diff(xrays, target)
+    xray_da = np.sqrt(xray_diff @ icov @ xray_diff)
+    return xray_da
 
-    xray_diff = diff(xrays, cluster_medoid)
-    if metric == 'maha':
-        icov = estimate_icov(phi_psi_dist[clusters == target_cluster], cluster_medoid)
-        if icov is None:
-            return None, target_cluster    
-
-        # print('TESTING WITH ALPHAFOLD')
-        # xray_diff = diff(xrays, af)
-        xray_da = np.sqrt(xray_diff @ icov @ xray_diff)
-    elif metric == 'euclidean':
-        xray_da = np.linalg.norm(xray_diff)
-
-    return xray_da, target_cluster
-
-def calc_da_window(phi_psi_dist, preds, precomputed_dists, clusters, af, metric='maha'):
-    target_cluster = get_target_cluster(phi_psi_dist, clusters, af)
-    cluster_medoid = get_cluster_medoid(phi_psi_dist, precomputed_dists, clusters, target_cluster)
-    preds_diff = diff(preds.values, cluster_medoid)
-
-    if metric == 'maha':
-        icov = estimate_icov(phi_psi_dist[clusters == target_cluster], cluster_medoid)
-        if icov is None:
-            return None
-
-        # Distance from preds to target
-        # print('TESTING WITH ALPHAFOLD')
-        # preds_diff = diff(preds.values, af)
-        preds_da = np.sqrt((preds_diff @ icov @ preds_diff.T).diagonal())
-    elif metric == 'euclidean':
-        preds_da = np.linalg.norm(preds_diff, axis=1)
+def calc_da_window(preds, target, icov):
+    preds_diff = diff(preds.values, target)
+    preds_da = np.sqrt((preds_diff @ icov @ preds_diff.T).diagonal())
     return preds_da
 
 def get_target_cluster_icov(phi_psi_dist, precomputed_dists, clusters, af):
