@@ -27,8 +27,8 @@ from torch.utils.tensorboard import SummaryWriter
 from lib.constants import AMINO_ACID_MAP, AMINO_ACID_MAP_INV
 
 winsizes = [4,5,6,7]
-PDBMINE_URL = os.getenv("PDBMINE_URL")
-PROJECT_DIR = 'ml_data'
+PDBMINE_URL = os.getenv("GREEN_PDBMINE_URL")
+PROJECT_DIR = 'ml_data_10.23.24'
 
 targetlist = retrieve_target_list()
 ids = ['T1024', 'T1096', 'T1027', 'T1082', 'T1091', 'T1058', 'T1049', 'T1030', 'T1056', 'T1038', 'T1025', 'T1028']
@@ -38,9 +38,10 @@ skip = [targetlist.loc[id, 'pdb_code'].upper() for id in ids]
 for pdb_code in proteins:
     if pdb_code in skip:
         continue
-    da = MultiWindowQuery(pdb_code, winsizes, PDBMINE_URL, PROJECT_DIR)
+    da = MultiWindowQuery(pdb_code, winsizes, PDBMINE_URL, PROJECT_DIR, match_outdir='/Data/cache')
     try:
         da.compute_structure()
+        da.query_pdbmine()
     except Exception as e:
         print(f'Error {pdb_code}: {e}')
         os.system(f'rm -r {da.outdir}')

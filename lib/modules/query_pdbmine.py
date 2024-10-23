@@ -8,6 +8,7 @@ import pandas as pd
 
 def query_and_process_pdbmine(ins):
     if not ins.match_outdir.exists() or len(list(ins.match_outdir.iterdir())) == 0:
+        print(f'Querying PDBMine - {ins.winsize}')
         ins.match_outdir.mkdir(exist_ok=True, parents=True)
         query_pdbmine(ins)
 
