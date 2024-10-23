@@ -39,11 +39,11 @@ for pdb_code in proteins:
     if pdb_code in skip:
         continue
     da = MultiWindowQuery(pdb_code, winsizes, PDBMINE_URL, PROJECT_DIR, match_outdir='/Data/cache')
-    try:
-        da.compute_structure()
-        da.query_pdbmine()
-    except Exception as e:
-        print(f'Error {pdb_code}: {e}')
-        os.system(f'rm -r {da.outdir}')
-        continue
-    da.query_pdbmine()
+    break    
+    # try:
+    #     da.compute_structure()
+    # except Exception as e:
+    #     print(f'Error {pdb_code}: {e}')
+    #     os.system(f'rm -r {da.outdir}')
+    #     continue
+    # da.query_pdbmine()
