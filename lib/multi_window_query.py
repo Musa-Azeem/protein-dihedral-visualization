@@ -42,6 +42,8 @@ class MultiWindowQuery:
         self.xray_phi_psi = self.xray_phi_psi[~self.xray_phi_psi.phi.isna() & ~self.xray_phi_psi.psi.isna()]
         if self.af_fn is not None:
             self.af_phi_psi = get_phi_psi_af(self, replace)
+        self.seqs = self.xray_phi_psi.seq_ctxt.unique()
+
     def compute_af_structure(self, replace=False):
         if self.af_fn is not None:
             self.af_phi_psi = get_phi_psi_af(self, replace)
@@ -65,11 +67,13 @@ class MultiWindowQuery:
 
     def load_results(self):
         for query in self.queries:
-            query.results = pd.read_csv(self.outdir / f'phi_psi_mined_win{query.winsize}.csv')
-            query.results['weight'] = query.weight
+            # query.results = pd.read_csv(self.outdir / f'phi_psi_mined_win{query.winsize}.csv')
+            # query.results['weight'] = query.weight
+            query.load_results(self.outdir)
         self.queried = True
         self.xray_phi_psi = pd.read_csv(self.outdir / 'xray_phi_psi.csv')
         if (self.outdir / 'af_phi_psi.csv').exists():
             self.af_phi_psi = pd.read_csv(self.outdir / 'af_phi_psi.csv')
         else:
             print('No alphafold phi-psi predictions found')
+        self.seqs = self.xray_phi_psi.seq_ctxt.unique()
