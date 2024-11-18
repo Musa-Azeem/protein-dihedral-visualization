@@ -195,9 +195,8 @@ def get_ml_pred_wrapper(phi_psi_dist, winsizes, res, af, ml, bw_method):
         return find_kdepeak(phi_psi_dist, bw_method)
     af = af[['phi', 'psi']].values[0]
     phi_psi_dist = phi_psi_dist.loc[~phi_psi_dist[['phi', 'psi']].isna().any(axis=1)]
-    winsizes = phi_psi_dist.winsize.unique()
     peaks = []
-    for w in [4,5,6,7]:
+    for w in winsizes:
         x = phi_psi_dist.loc[phi_psi_dist.winsize == w, ['phi', 'psi']].values.T
         if x.shape[1] < 3:
             if x.shape[1] == 0:
