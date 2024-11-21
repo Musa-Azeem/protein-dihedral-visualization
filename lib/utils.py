@@ -95,53 +95,6 @@ def find_kdepeak(phi_psi_dist, bw_method, return_prob=False):
         return kdepeak, kde.max()
     return kdepeak
 
-def find_kdepeak_w(phi_psi_dist, bw_method, return_prob=False):
-    # Find probability of each point
-    phi_psi_dist = phi_psi_dist.loc[~phi_psi_dist[['phi', 'psi']].isna().any(axis=1)].copy()
-    n_windows = phi_psi_dist.winsize.nunique()
-    weights = phi_psi_dist['weight'].unique()
-    # print(n_windows, weights)
-    # for now, hard code weights for winsizes 4,5,6,7
-    phi_psi_dist['weight'] = phi_psi_dist['weight'].astype(float)
-    match(n_windows):
-        case 1:
-            # only first window size
-            print('\tWeights: 4:1')
-            phi_psi_dist['weight'] = 1.
-        case 2:
-            # 4 and 5
-            print('\tWeights: 4:0, 5:1')
-            phi_psi_dist.loc[phi_psi_dist.weight == weights[0], 'weight'] = 0.01
-            phi_psi_dist.loc[phi_psi_dist.weight == weights[1], 'weight'] = 0.99 
-        case 3:
-            # 4, 5, 6
-            print('\tWeights: 4:0, 5:0.2, 6:0.8')
-            phi_psi_dist.loc[phi_psi_dist.weight == weights[0], 'weight'] = 0.01
-            phi_psi_dist.loc[phi_psi_dist.weight == weights[1], 'weight'] = 0.195
-            phi_psi_dist.loc[phi_psi_dist.weight == weights[2], 'weight'] = 0.795
-        case 4:
-            # 4, 5, 6, 7
-            print('\tWeights: 4:0, 5:0, 6:0.2, 7:0.8')
-            phi_psi_dist.loc[phi_psi_dist.weight == weights[0], 'weight'] = 0.01
-            phi_psi_dist.loc[phi_psi_dist.weight == weights[1], 'weight'] = 0.01
-            phi_psi_dist.loc[phi_psi_dist.weight == weights[2], 'weight'] = 0.19
-            phi_psi_dist.loc[phi_psi_dist.weight == weights[3], 'weight'] = 0.79
-    # print(phi_psi_dist.groupby('winsize').mean(numeric_only=True))
-    kernel = gaussian_kde(
-        phi_psi_dist[['phi','psi']].T, 
-        weights=phi_psi_dist['weight'], 
-        bw_method=bw_method
-    )
-    phi_grid, psi_grid = np.meshgrid(np.linspace(-180, 180, 360), np.linspace(-180, 180, 360))
-    grid = np.vstack([phi_grid.ravel(), psi_grid.ravel()])
-    kde = kernel(grid).reshape(phi_grid.shape)
-    kdepeak = grid[:,kde.argmax()]
-    kdepeak = pd.Series({'phi': kdepeak[0], 'psi': kdepeak[1]})
-
-    if return_prob:
-        return kdepeak, kde.max()
-    return kdepeak
-
 def find_kdepeak_af(phi_psi_dist, bw_method, af, return_peaks=False, find_peak=find_kdepeak):
     # Find probability of each point
     if af.shape[0] == 0:
@@ -227,7 +180,7 @@ def calc_da(kdepeak, phi_psi_preds):
     return np.sqrt(diff(phi_psi_preds[:,0], kdepeak[0])**2 + diff(phi_psi_preds[:,1], kdepeak[1])**2)
 
 
-def compute_rmsd(fnA, fnB, startA=None, endA=None, startB=None, endB=None, print_alignment=True, return_n=False):
+def get_aligned_atoms(fnA, fnB, startA=None, endA=None, startB=None, endB=None, print_alignment=True):
     # Compute RMSD between two structures
     pdb_parser = PDBParser()
     with warnings.catch_warnings():
@@ -245,7 +198,6 @@ def compute_rmsd(fnA, fnB, startA=None, endA=None, startB=None, endB=None, print
 
     residuesA = ''.join([AMINO_ACID_CODES.get(r.resname, 'X') for r in chainA.get_residues()])[startA:endA]
     residuesB = ''.join([AMINO_ACID_CODES.get(r.resname, 'X') for r in chainB.get_residues()])[startB:endB]
-    print(len(residuesA), len(residuesB)   )
     aligner = PairwiseAligner()
     aligner.mode = 'global'
     alignments =  aligner.align(residuesA, residuesB)
@@ -271,7 +223,10 @@ def compute_rmsd(fnA, fnB, startA=None, endA=None, startB=None, endB=None, print
                 continue
             atomsA.append(atomA)
             atomsB.append(atomB)
-    atomsA, atomsB = np.array(atomsA), np.array(atomsB)
+    return atomsA, atomsB
+
+def compute_rmsd(fnA, fnB, startA=None, endA=None, startB=None, endB=None, print_alignment=True, return_n=False):
+    atomsA, atomsB = get_aligned_atoms(fnA, fnB, startA, endA, startB, endB, print_alignment)
 
     sup = Superimposer()
     sup.set_atoms(atomsA, atomsB)
@@ -282,6 +237,23 @@ def compute_rmsd(fnA, fnB, startA=None, endA=None, startB=None, endB=None, print
         dist = np.sum((atomsA - atomsB)**2)
         return sup.rms, len(atomsA), dist
     return sup.rms
+
+def compute_gdt(fnA, fnB, startA=None, endA=None, startB=None, endB=None, print_alignment=True, return_n=False, thresholds=[1,2,4,8]):
+    # WARNING: This is not consistent with the GDT_TS calculation from CASP
+    atomsA, atomsB = get_aligned_atoms(fnA, fnB, startA, endA, startB, endB, print_alignment)
+
+    sup = Superimposer()
+    sup.set_atoms(atomsA, atomsB)
+    sup.apply(atomsB)
+    atomsA = np.array([a.coord for a in atomsA])
+    atomsB = np.array([a.coord for a in atomsB])
+    n = atomsA.shape[0]
+
+    dist = np.linalg.norm(atomsA - atomsB, axis=1)
+    gdt = []
+    for t in thresholds:
+        gdt.append((dist <= t).sum() / n)
+    return np.mean(gdt)
 
 def test_correlation(ins):
     grouped_preds = ins.grouped_preds.dropna(subset=['log_da', 'GDT_TS'])

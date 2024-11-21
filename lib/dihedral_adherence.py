@@ -55,6 +55,7 @@ class DihedralAdherence():
         self.pdbmine_url = pdbmine_url
         self.outdir = Path(f'{projects_dir}/{casp_protein_id}_win{"-".join([str(w) for w in winsizes])}')
         self.pdbmine_cache_dir = Path(pdbmine_cache_dir)
+        print(self.outdir)
         if self.outdir.exists():
             print('Results already exist')
         else:

@@ -2,9 +2,12 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 from lib import MultiWindowQuery
-from lib.utils import get_find_target
+from lib.utils import get_find_target, compute_rmsd, compute_gdt
 from lib.modules import (
     get_da_for_all_predictions, get_da_for_all_predictions_window, 
+)
+from lib.plotting import (
+    plot_res_vs_da
 )
 from lib.ml.models import MLPredictor
 import math
@@ -18,7 +21,11 @@ class DihedralAdherencePDB(MultiWindowQuery):
             pdbmine_cache_dir='casp_cache',
         ):
         super().__init__(pdb_code, winsizes, pdbmine_url, projects_dir, pdbmine_cache_dir, match_outdir=pdbmine_cache_dir)
-
+        self.has_af = True
+        if self.af_fn is None:
+            self.has_af = False
+            return
+        self.pred_fn = self.af_fn
         self.phi_psi_predictions = None
         self.overlapping_seqs = None
         self.model = None
@@ -38,23 +45,39 @@ class DihedralAdherencePDB(MultiWindowQuery):
         self.find_target, self.xray_da_fn, self.pred_da_fn = \
             get_find_target(self)
         
+        for w,q in zip(self.kdews, self.queries):
+            q.weight = w
+
+        self.results=pd.DataFrame([[self.pdb_code, np.nan, np.nan, np.nan]], columns=['Model', 'GDT_TS', 'RMS_CA', 'DA'])
+        
     def compute_das(self, replace=True, da_scale=None):
         if self.xray_phi_psi is None or self.phi_psi_predictions is None:
             print('Run compute_structures() or load_results() first')
             return
         if da_scale is None:
-            da_scale = [math.log2(i)+1 for i in self.kdews]
+            # da_scale = [math.log2(i)+1 for i in self.kdews]
+            da_scale = [1] * len(self.kdews)
         
         if self.mode == 'full_window':
             get_da_for_all_predictions_window(self, replace)
         else:
             # for all other modes
             get_da_for_all_predictions(self, replace, da_scale)
-            # get_da_for_all_predictions_ml(self, replace, da_scale)
-    
+        self.get_total_da()
+            
     def compute_structures(self, replace=False):
         super().compute_structure(replace)
-        self.phi_psi_predictions = self.xray_phi_psi.copy()
+        # For now, only prediction is alphafold
+        if self.af_phi_psi is not None:
+            self.phi_psi_predictions = self.af_phi_psi.drop('conf', axis=1).copy()
+        self.phi_psi_predictions.to_csv(self.outdir / 'phi_psi_predictions.csv', index=False)
+        if self.queried:
+            self.get_results_metadata()
+    
+    def query_pdbmine(self, replace=False):
+        super().query_pdbmine(replace)
+        if self.xray_phi_psi is not None:
+            self.get_results_metadata()
 
     def seq_filter(self):
         self.xray_phi_psi = self.xray_phi_psi[~self.xray_phi_psi.phi.isna() & ~self.xray_phi_psi.psi.isna()]
@@ -71,8 +94,11 @@ class DihedralAdherencePDB(MultiWindowQuery):
             self.af_phi_psi = pd.read_csv(self.outdir / 'af_phi_psi.csv')
         else:
             print('No AlphaFold phi-psi data found')
+        if (self.outdir / 'phi_psi_predictions.csv').exists():
+            self.phi_psi_predictions = pd.read_csv(self.outdir / 'phi_psi_predictions.csv')
+        else:
+            self.phi_psi_predictions = self.af_phi_psi.drop('conf', axis=1).copy()
         self.seq_filter()
-        self.phi_psi_predictions = self.xray_phi_psi.copy()
         self.get_results_metadata()
         
     def load_results_da(self):
@@ -84,13 +110,14 @@ class DihedralAdherencePDB(MultiWindowQuery):
             query.results['weight'] = query.weight
         self.queried = True
         self.xray_phi_psi = pd.read_csv(self.outdir / self.xray_da_fn)
+        self.phi_psi_predictions = pd.read_csv(self.outdir / self.pred_da_fn)
         if (self.outdir / 'af_phi_psi.csv').exists():
             self.af_phi_psi = pd.read_csv(self.outdir / 'af_phi_psi.csv')
         else:
             print('No AlphaFold phi-psi data found')
         self.seq_filter()
-        self.phi_psi_predictions = self.xray_phi_psi.copy()
         self.get_results_metadata()
+        self.get_total_da()
 
     def get_results_metadata(self):
         self.overlapping_seqs = list(
@@ -106,4 +133,23 @@ class DihedralAdherencePDB(MultiWindowQuery):
             self.phi_psi_predictions = self.phi_psi_predictions.merge(self.af_phi_psi[['seq_ctxt', 'conf']], on='seq_ctxt', how='left')
         else:
             self.phi_psi_predictions['conf'] = np.nan
+
+        rmsd = compute_rmsd(self.xray_fn, self.pred_fn, print_alignment=False)
+        gdt = compute_gdt(self.xray_fn, self.pred_fn, print_alignment=False)
+        self.results.loc[0, 'RMS_CA'] = rmsd
+        self.results.loc[0, 'GDT_TS'] = gdt
         return self.overlapping_seqs, self.seqs, self.protein_ids
+
+    def get_total_da(self):
+        da = self.phi_psi_predictions.groupby('protein_id').da.mean()
+        log_da = np.log10(da)
+        self.results.loc[0, 'DA'] = log_da.values[0]
+
+    def plot_res_vs_da(self,highlight_res=None, limit_quantile=None, legend_loc='upper right', fn=None, text_loc='right'):
+        highlight_res = highlight_res or []
+        if not 'da' in self.phi_psi_predictions.columns:
+            print('No DA data available. Run compute_das() or load_results_da() first')
+            return
+        protein_id = self.protein_ids[0]
+        pred_name = 'AlphaFold'
+        return plot_res_vs_da(self, protein_id, pred_name, highlight_res, limit_quantile, legend_loc, fn, text_loc)
