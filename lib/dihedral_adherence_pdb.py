@@ -105,7 +105,7 @@ class DihedralAdherencePDB(MultiWindowQuery):
         for query in self.queries:
             # query.results = pd.read_csv(self.outdir / f'phi_psi_mined_win{query.winsize}.csv')
             query.load_results(self.outdir)
-            if query.results['weight'].values[0] != query.weight:
+            if len(query.results) > 0 and query.results['weight'].values[0] != query.weight:
                 print('WARNING: Weights used to calculate DA are different')
             query.results['weight'] = query.weight
         self.queried = True
