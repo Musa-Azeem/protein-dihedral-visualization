@@ -1,6 +1,8 @@
 import torch
 from torch import nn
 import torch.nn.functional as F
+from lib.ml.transformer_model import TransformerModel
+from lib.constants import AMINO_ACID_MAP
 
 class MLPredictor():
     def __init__(self, lengths, device, weights_file):
@@ -13,6 +15,26 @@ class MLPredictor():
         with torch.no_grad():
             X, xres, af = X.to(self.device), xres.to(self.device), af.to(self.device)
             return self.model(X, xres, af).cpu()
+    
+    def __call__(self, X, xres, af):
+        return self.predict(X, xres, af)
+    
+    def load_weights(self):
+        self.model.load_state_dict(torch.load(self.weights_file, map_location=self.device))
+
+class MLPredictorWindow():
+    def __init__(self, device, lengths, winsizes, weights_file):
+        self.model = TransformerModel(lengths, winsizes, device).to(device)
+        self.model.eval()
+        self.lengths = lengths # number of clusters for each window size
+        self.device = device
+        self.weights_file = weights_file
+
+    def predict(self, X, seq):
+        xres = torch.tensor([AMINO_ACID_MAP[r] for r in seq])
+        with torch.no_grad():
+            X, xres = torch.tensor(X).float().to(self.device), xres.to(self.device)
+            return self.model(X.unsqueeze(0), xres.unsqueeze(0)).cpu()
     
     def __call__(self, X, xres, af):
         return self.predict(X, xres, af)

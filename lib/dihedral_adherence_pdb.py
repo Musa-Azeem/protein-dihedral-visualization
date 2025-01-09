@@ -4,12 +4,12 @@ from pathlib import Path
 from lib import MultiWindowQuery
 from lib.utils import get_find_target, compute_rmsd, compute_gdt
 from lib.modules import (
-    get_da_for_all_predictions, get_da_for_all_predictions_window, 
+    get_da_for_all_predictions, get_da_for_all_predictions_window, get_da_for_all_predictions_window_ml
 )
 from lib.plotting import (
     plot_res_vs_da
 )
-from lib.ml.models import MLPredictor
+from lib.ml.models import MLPredictor, MLPredictorWindow
 import math
 
 class DihedralAdherencePDB(MultiWindowQuery):
@@ -35,11 +35,14 @@ class DihedralAdherencePDB(MultiWindowQuery):
         self.kdews = [1] * len(winsizes) if kdews is None else kdews
         
         self.mode = mode
-        if model is not None:
-            self.model = model
-        else:
-            self.model = MLPredictor(ml_lengths, device, weights_file)
+        # if model is not None:
+            # self.model = model
         if self.mode == 'ml':
+            self.model = MLPredictor(ml_lengths, device, weights_file)
+            self.model.load_weights()
+        elif self.mode == 'full_window_ml':
+            self.ml_lengths = [0,0,0,2]
+            self.model = MLPredictorWindow(device, self.ml_lengths, self.winsizes, weights_file)
             self.model.load_weights()
     
         self.find_target, self.xray_da_fn, self.pred_da_fn = \
@@ -60,6 +63,8 @@ class DihedralAdherencePDB(MultiWindowQuery):
         
         if self.mode == 'full_window':
             get_da_for_all_predictions_window(self, replace)
+        elif self.mode == 'full_window_ml':
+            get_da_for_all_predictions_window_ml(self, replace)
         else:
             # for all other modes
             get_da_for_all_predictions(self, replace, da_scale)
@@ -94,12 +99,14 @@ class DihedralAdherencePDB(MultiWindowQuery):
             self.af_phi_psi = pd.read_csv(self.outdir / 'af_phi_psi.csv')
         else:
             print('No AlphaFold phi-psi data found')
+            return False
         if (self.outdir / 'phi_psi_predictions.csv').exists():
             self.phi_psi_predictions = pd.read_csv(self.outdir / 'phi_psi_predictions.csv')
         else:
             self.phi_psi_predictions = self.af_phi_psi.drop('conf', axis=1).copy()
         self.seq_filter()
         self.get_results_metadata()
+        return True
         
     def load_results_da(self):
         for query in self.queries:

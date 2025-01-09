@@ -11,10 +11,13 @@ def get_phi_psi_dist_window(q, seq_ctxt):
     phi_psi_dist = phi_psi_dist.dropna(axis=0)
     return phi_psi_dist
 
-def get_combined_phi_psi_dist(ins, seq_ctxt):
+def get_combined_phi_psi_dist(ins, seq_ctxt, winsizes=None):
     phi_psi_dist = []
-    smallest_winsize = ins.winsizes[0]
+    winsizes = winsizes if winsizes is not None else ins.winsizes
+    smallest_winsize = min(winsizes)
     for q in ins.queries:
+        if q.winsize not in winsizes:
+            continue
         inner_seq = q.get_subseq(seq_ctxt)
         matches_q = q.results_window[q.results_window.seq == inner_seq]
         matches_q = matches_q[['match_id', 'window_pos', 'phi', 'psi']].pivot(index='match_id', columns='window_pos', values=['phi', 'psi'])
@@ -30,6 +33,8 @@ def get_combined_phi_psi_dist(ins, seq_ctxt):
         matches_q['winsize'] = q.winsize
         matches_q['seq'] = inner_seq
         phi_psi_dist.append(matches_q)
+    if len(phi_psi_dist) == 0:
+        return None, None
     phi_psi_dist = pd.concat(phi_psi_dist).reset_index()
     phi_psi_dist = phi_psi_dist.loc[phi_psi_dist.index.repeat(phi_psi_dist.weight)].reset_index(drop=True)
     phi_psi_dist_v = phi_psi_dist[[f'phi_{i}' for i in range(smallest_winsize)]+[f'psi_{i}' for i in range(smallest_winsize)]]
@@ -66,6 +71,7 @@ def get_preds_window(ins, q, seq_ctxt):
         raise ValueError
     pred_pos = pred_pos[0]
     preds = ins.phi_psi_predictions[(ins.phi_psi_predictions.pos >= pred_pos-center_idx) & (ins.phi_psi_predictions.pos < pred_pos-center_idx+q.winsize)].copy()
+    preds = preds.drop_duplicates('pos')
     preds = preds[['protein_id', 'pos', 'phi', 'psi']].pivot(index='protein_id', columns='pos', values=['phi', 'psi'])
     preds.columns = [f'{c[0]}_{c[1]-pred_pos+center_idx}' for c in preds.columns.to_flat_index()]
     preds = preds.dropna(axis=0)
