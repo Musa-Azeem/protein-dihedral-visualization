@@ -28,6 +28,7 @@ def get_combined_phi_psi_dist(ins, seq_ctxt, winsizes=None):
             print(f"\tSkipping {inner_seq} - incomplete data")
             continue
         matches_q.columns = [f'{c[0]}_{c[1]}' for c in matches_q.columns.to_flat_index()]
+        # MASSIVE BUG - need to choose phi-psi to align middle of window - not choose from beginning
         matches_q = matches_q[[f'phi_{i}' for i in range(smallest_winsize)]+[f'psi_{i}' for i in range(smallest_winsize)]]
         matches_q['weight'] = q.weight
         matches_q['winsize'] = q.winsize

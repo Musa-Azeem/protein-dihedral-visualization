@@ -44,8 +44,8 @@ def get_da_for_all_predictions_window_(ins):
             continue
 
         _, info = get_phi_psi_dist(ins.queries, seq_ctxt)
-        for i in info:
-            print(f'\tWin {i[0]}: {i[1]} - {i[2]} samples')
+        for j in info:
+            print(f'\tWin {j[0]}: {j[1]} - {j[2]} samples')
 
         # TODO n_samples
 

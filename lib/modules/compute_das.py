@@ -33,8 +33,8 @@ def get_da_for_all_predictions_(ins, da_scale, scale_das=True, bw_method=None):
                     print(f'\tSkipping {seq} - low confidence')
 
         phi_psi_dist, info = get_phi_psi_dist(ins.queries, seq)
-        for i in info:
-            print(f'\tWin {i[0]}: {i[1]} - {i[2]} samples')
+        for j in info:
+            print(f'\tWin {j[0]}: {j[1]} - {j[2]} samples')
 
         # Calculate number of samples weighted by kdeweight
         weighted_n_samples = sum([i[2]*w for i,w in zip(info, da_scale)])
