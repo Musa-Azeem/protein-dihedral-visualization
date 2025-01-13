@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 from sklearn.cluster import HDBSCAN
 from scipy.linalg import inv
+from lib.utils import get_subseq_func
 
 def get_phi_psi_dist_window(q, seq_ctxt):
     seq = q.get_subseq(seq_ctxt)
@@ -20,6 +21,7 @@ def get_combined_phi_psi_dist(ins, seq_ctxt, winsizes=None):
             continue
         inner_seq = q.get_subseq(seq_ctxt)
         matches_q = q.results_window[q.results_window.seq == inner_seq]
+        # pivot to combine matches into single row covering all residues in the current subsequence
         matches_q = matches_q[['match_id', 'window_pos', 'phi', 'psi']].pivot(index='match_id', columns='window_pos', values=['phi', 'psi'])
         matches_q = matches_q.dropna(axis=0)
         if matches_q.shape[0] == 0:
@@ -27,9 +29,13 @@ def get_combined_phi_psi_dist(ins, seq_ctxt, winsizes=None):
         if matches_q.shape[1] != q.winsize*2:
             print(f"\tSkipping {inner_seq} - incomplete data")
             continue
+        # flatten column index to be phi_0, phi_1, ..., psi_0, psi_1, ...
         matches_q.columns = [f'{c[0]}_{c[1]}' for c in matches_q.columns.to_flat_index()]
-        # MASSIVE BUG - need to choose phi-psi to align middle of window - not choose from beginning
-        matches_q = matches_q[[f'phi_{i}' for i in range(smallest_winsize)]+[f'psi_{i}' for i in range(smallest_winsize)]]
+        # keep only the columns that are in the smallest window size - choose the columns so that the residues match up
+        columns = get_subseq_func(smallest_winsize, q.winsize)(list(range(q.winsize)))
+        matches_q = matches_q[[f'phi_{i}' for i in columns]+[f'psi_{i}' for i in columns]]
+        # reset column index to be phi_0, psi_0, phi_1, ..., psi_0, psi_1, ...
+        matches_q.columns = [f'phi_{i}' for i in range(smallest_winsize)] + [f'psi_{i}' for i in range(smallest_winsize)]
         matches_q['weight'] = q.weight
         matches_q['winsize'] = q.winsize
         matches_q['seq'] = inner_seq
