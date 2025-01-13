@@ -78,7 +78,6 @@ def get_preds_window(ins, q, seq_ctxt):
         raise ValueError
     pred_pos = pred_pos[0]
     preds = ins.phi_psi_predictions[(ins.phi_psi_predictions.pos >= pred_pos-center_idx) & (ins.phi_psi_predictions.pos < pred_pos-center_idx+q.winsize)].copy()
-    preds = preds.drop_duplicates('pos')
     preds = preds[['protein_id', 'pos', 'phi', 'psi']].pivot(index='protein_id', columns='pos', values=['phi', 'psi'])
     preds.columns = [f'{c[0]}_{c[1]-pred_pos+center_idx}' for c in preds.columns.to_flat_index()]
     preds = preds.dropna(axis=0)
