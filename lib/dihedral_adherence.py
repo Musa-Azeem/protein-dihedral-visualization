@@ -29,7 +29,8 @@ from lib.plotting import (
     plot_da_vs_gdt_simple,
     plot_res_vs_da_1plot,
     plot_dist_kde,
-    plot_one_dist_scatter
+    plot_one_dist_scatter,
+    plot_across_window_clusters
 )
 from lib.constants import AMINO_ACID_CODES, AMINO_ACID_CODES_INV, AMINO_ACID_CODE_NAMES
 import pandas as pd
@@ -415,6 +416,13 @@ class DihedralAdherence():
     def plot_one_dist_scatter(self, seq=None, fn=None):
         seq = seq or self.overlapping_seqs[0]
         plot_one_dist_scatter(self, seq, fn)
+    
+    def plot_across_window_clusters(self, seq=None, plot_xrays=True, plot_afs=True, n_cluster_lines=50):
+        center_idx_ctxt = self.queries[-1].get_center_idx_pos()
+        winsize_ctxt = self.queries[-1].winsize
+        seqs_for_window = self.seqs[center_idx_ctxt:-(winsize_ctxt - center_idx_ctxt - 1)]
+        seq = seq or seqs_for_window[0]
+        plot_across_window_clusters(self, seq, plot_xrays, plot_afs, n_cluster_lines)
     
     def get_id(self, group_id):
         return f'{self.casp_protein_id}TS{group_id}'

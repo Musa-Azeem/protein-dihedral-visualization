@@ -7,6 +7,13 @@ import matplotlib.patches as mpatches
 from matplotlib.ticker import FuncFormatter
 from scipy.stats import linregress
 from lib.utils import calc_da, calc_da_for_one, get_phi_psi_dist
+from lib.across_window_utils import (
+    get_combined_phi_psi_dist, get_xrays_window, get_afs_window, 
+    get_preds_window, precompute_dists, find_clusters, 
+    filter_precomputed_dists, get_cluster_medoid
+)
+from matplotlib.patches import ConnectionPatch
+
 
 colors = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple', 'tab:brown', 'tab:pink', 'tab:gray', 'tab:olive', 'tab:cyan']
 
@@ -499,3 +506,94 @@ def plot_dist_kde(ins, pred_id, percentile, fn):
     # axes[1].set_xlim(0, 5000)
     fig.suptitle('Dihedral adherence distribution')
     plt.show()
+
+
+def plot_across_window_clusters(ins, seq_ctxt, plot_xrays, plot_afs, n_cluster_lines=50):
+    _, info = get_phi_psi_dist(ins.queries, seq_ctxt)
+    for j in info:
+        print(f'\tWin {j[0]}: {j[1]} - {j[2]} samples')
+    phi_psi_dist, phi_psi_dist_v = get_combined_phi_psi_dist(ins, seq_ctxt)
+
+    q = ins.queries[0]
+    xrays = get_xrays_window(ins, q, seq_ctxt)
+    preds = get_preds_window(ins, q, seq_ctxt)
+    afs = get_afs_window(ins, q, seq_ctxt)
+
+    precomputed_dists = precompute_dists(phi_psi_dist_v)
+    n_clusters, clusters = find_clusters(precomputed_dists, 20)
+    print(n_clusters - 1)
+    precomputed_dists, phi_psi_dist_v, clusters = filter_precomputed_dists(precomputed_dists, phi_psi_dist_v, clusters)
+
+    def plot(q, seq_ctxt, xrays, afs, clusters, phi_psi_dist, precomputed_dists):
+        n_cluster_plot = 10
+        n_clusters = len(np.unique(clusters))
+        xrays = xrays.reshape(2, -1)
+        afs = afs.reshape(2, -1)
+        print(pd.Series(clusters).value_counts())
+
+        cluster_points = phi_psi_dist.groupby(clusters).count().sort_values('phi_0', ascending=False).index.values
+        clusters_plot = cluster_points[:n_cluster_plot]
+        medoids = []
+        for cluster in cluster_points:
+            medoid = get_cluster_medoid(phi_psi_dist, precomputed_dists, clusters, cluster)
+            medoids.append(medoid)
+        medoids = np.array(medoids)
+
+        colors = sns.color_palette('Dark2', n_clusters)
+        fig, axes = plt.subplots(len(clusters_plot), q.winsize, figsize=(16, min(n_cluster_plot, len(clusters_plot))*4), sharey=True, sharex=True)
+        for i,axrow in enumerate(axes):
+            for j, ax in enumerate(axrow):
+                cluster_dist = phi_psi_dist[clusters == clusters_plot[i]]
+
+                sns.scatterplot(data=phi_psi_dist[clusters != clusters_plot[i]], x=f'phi_{j}', y=f'psi_{j}', ax=ax, label='Other Clusters', color='tab:blue', alpha=0.5)
+                sns.scatterplot(data=cluster_dist, x=f'phi_{j}', y=f'psi_{j}', ax=ax, label=f'Cluster {clusters_plot[i]}', color=colors[i])
+                if plot_xrays:
+                    ax.scatter(xrays[0,j], xrays[1,j], color='tab:red', marker='X', label='X-ray', zorder=1000)
+                if plot_afs:
+                    ax.scatter(afs[0,j], afs[1,j], color='tab:orange', marker='X', label='AF', zorder=1000)
+                # ax.scatter(pred[0,j], pred[1,j], color='tab:orange', marker='X', label=pred_id, zorder=1000)
+                ax.scatter(medoids[i].reshape(2,-1)[0,j], medoids[i].reshape(2,-1)[1,j], color='black', marker='X', label='Cluster Centroid', zorder=1000)
+
+                def add_conn(xyA, xyB, color, lw, **kwargs):
+                    con = ConnectionPatch(
+                        xyA=xyA, 
+                        xyB=xyB, 
+                        coordsA="data", coordsB="data", 
+                        axesA=axrow[j], axesB=axrow[j+1], 
+                        color=color, lw=lw, linestyle='--', alpha=0.5, **kwargs
+                    )
+                    fig.add_artist(con)
+                if j < q.winsize - 1:
+                    # TODO draw lines for 50 points closest to centroid
+                    for k, row in cluster_dist.sample(min(cluster_dist.shape[0], n_cluster_lines)).iterrows():
+                        add_conn((row[f'phi_{j}'], row[f'psi_{j}']), (row[f'phi_{j+1}'], row[f'psi_{j+1}']), colors[i], 1)
+                    if plot_xrays:
+                        add_conn((xrays[0,j], xrays[1,j]), (xrays[0,j+1], xrays[1,j+1]), 'tab:red', 5, zorder=100)
+                    if plot_afs:
+                        add_conn((afs[0,j], afs[1,j]), (afs[0,j+1], afs[1,j+1]), 'tab:orange', 5, zorder=100)
+                    # add_conn((pred[0,j], pred[1,j]), (pred[0,j+1], pred[1,j+1]), 'tab:orange', 5, zorder=100)
+                    add_conn((medoids[i].reshape(2,-1)[0,j], medoids[i].reshape(2,-1)[1,j]), (medoids[i].reshape(2,-1)[0,j+1], medoids[i].reshape(2,-1)[1,j+1]), 'black', 5, zorder=100)
+
+                ax.set_xlim(-180, 180)
+                ax.set_ylim(-180, 180)
+                ax.set_xlabel('')
+                if j == q.winsize - 1:
+                    ax.legend()
+                else:
+                    ax.legend().remove()
+                if j == 0:
+                    ax.set_ylabel(f'Cluster {clusters_plot[i]} [{cluster_dist.shape[0]}]')
+        fig.supxlabel('Phi')
+        fig.supylabel('Psi')
+        # fig.suptitle(
+        #     # f'Clustered Phi/Psi Distributions for {seq_ctxt} in protein {da.casp_protein_id}: N={n_points} Silhouette Score: {sil_score:.2f}, X-ray Score [Cluster {nearest_cluster}]: {xray_sil:.2f}, Prediction Score [Cluster {nearest_cluster_pred}]: {pred_sil:.2f}', 
+        #     f'Clustered Phi/Psi Distributions for {seq_ctxt} in protein {da.casp_protein_id}: N={n_points} ({n_unassigned} unassigned) Silhouette Score: {sil_score:.2f}, X-ray Score [Cluster {nearest_cluster}]: {xray_maha:.2f}', 
+        #     y=1.01
+        # )
+        plt.tight_layout()
+        plt.show()
+    
+    plot(q, seq_ctxt, xrays, afs, clusters, phi_psi_dist_v, precomputed_dists)
+
+def plot_across_window_cluster_medoids()
+    pass
