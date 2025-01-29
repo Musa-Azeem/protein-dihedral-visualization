@@ -521,7 +521,6 @@ def plot_across_window_clusters(ins, seq_ctxt, plot_xrays, plot_afs, n_cluster_l
 
     precomputed_dists = precompute_dists(phi_psi_dist_v)
     n_clusters, clusters = find_clusters(precomputed_dists, 20)
-    print(n_clusters - 1)
     precomputed_dists, phi_psi_dist_v, clusters = filter_precomputed_dists(precomputed_dists, phi_psi_dist_v, clusters)
 
     def plot(q, seq_ctxt, xrays, afs, clusters, phi_psi_dist, precomputed_dists):
@@ -595,5 +594,92 @@ def plot_across_window_clusters(ins, seq_ctxt, plot_xrays, plot_afs, n_cluster_l
     
     plot(q, seq_ctxt, xrays, afs, clusters, phi_psi_dist_v, precomputed_dists)
 
-def plot_across_window_cluster_medoids()
-    pass
+def plot_across_window_cluster_medoids(ins, seq_ctxt, plot_xrays=False, plot_afs=False, verbose=False, mode_scatter=False):
+    _, info = get_phi_psi_dist(ins.queries, seq_ctxt)
+    for j in info:
+        print(f'\tWin {j[0]}: {j[1]} - {j[2]} samples')
+    phi_psi_dist, phi_psi_dist_v = get_combined_phi_psi_dist(ins, seq_ctxt)
+
+    q = ins.queries[0]
+    # xrays = get_xrays_window(ins, q, seq_ctxt)
+    # preds = get_preds_window(ins, q, seq_ctxt)
+    # afs = get_afs_window(ins, q, seq_ctxt)
+
+    precomputed_dists = precompute_dists(phi_psi_dist_v)
+    n_clusters, clusters = find_clusters(precomputed_dists, 20)
+    if verbose:
+        print(f'Number of clusters: {n_clusters}')
+    precomputed_dists, phi_psi_dist_v, clusters = filter_precomputed_dists(precomputed_dists, phi_psi_dist_v, clusters)
+    print(phi_psi_dist_v.shape)
+
+    def plot(q, phi_psi_dist, precomputed_dists, clusters, seq_ctxt):
+        seq = q.get_subseq(seq_ctxt)
+        unique_clusters, cluster_counts = np.unique(clusters, return_counts=True)
+        medoids = []
+        for cluster in unique_clusters:
+            medoid = get_cluster_medoid(phi_psi_dist, precomputed_dists, clusters, cluster)
+            medoids.append(medoid)
+            if verbose:
+                print(f'Cluster {cluster} has {cluster_counts[cluster]} members and medoid {medoid}')
+        medoids = np.array(medoids).reshape(unique_clusters.shape[0], 2, -1)
+
+        fig, axes = plt.subplots(1, q.winsize, figsize=(q.winsize*3,4), sharey=True)
+        colors = sns.color_palette('Dark2', len(unique_clusters))
+        # if xrays is not None:
+            # xrays = xrays.reshape(2, -1)
+        legend_handles = []
+        legend_labels = []
+        for i in range(q.winsize):
+            def add_conn(xyA, xyB, color, lw, **kwargs):
+                con = ConnectionPatch(
+                    xyA=xyA, 
+                    xyB=xyB, 
+                    coordsA="data", coordsB="data", 
+                    axesA=axes[i], axesB=axes[i+1], 
+                    color=color, lw=lw, linestyle='--', alpha=0.5, **kwargs
+                )
+                fig.add_artist(con)
+            # KDE of all points together
+            if not mode_scatter:
+                sns.kdeplot(data=phi_psi_dist, x=f'phi_{i}', y=f'psi_{i}', ax=axes[i], color='black', fill=True)
+            for j,cluster in enumerate(unique_clusters):
+                if mode_scatter:
+                    sns.scatterplot(
+                        data=phi_psi_dist[clusters==cluster], x=f'phi_{i}', y=f'psi_{i}', ax=axes[i], 
+                        color=colors[cluster], label=f'Cluster {cluster} [{cluster_counts[j]} members]', alpha=0.3, zorder=j
+                    )
+                else:
+                    # individual KDEs
+                    # sns.kdeplot(
+                    #     data=phi_psi_dist[clusters==cluster], x=f'phi_{i}', y=f'psi_{i}', ax=axes[i], 
+                    #     color=colors[cluster], zorder=j, levels=5
+                    # )
+                    axes[i].scatter(
+                        x=medoids[j][0,i], y=medoids[j][1,i], color=colors[cluster], marker='X', 
+                        label=f'Cluster {cluster} [{cluster_counts[j]} members]', zorder=100
+                    )
+                if i < q.winsize - 1:
+                    add_conn((medoids[j][0,i], medoids[j][1,i]), (medoids[j][0,i+1], medoids[j][1,i+1]), colors[cluster], 2.5, zorder=100)
+            if i == 0:
+                legend_handles, legend_labels = axes[i].get_legend_handles_labels()
+            axes[i].set_xlabel('')
+            axes[i].set_ylabel('')
+            axes[i].set_xlim(-180,180)
+            axes[i].set_ylim(-180,180)
+            axes[i].set_title(f'Residue {seq[i]}')
+            axes[i].legend().remove()
+        
+        fig.legend(
+            handles=legend_handles, 
+            labels=legend_labels, 
+            loc='lower center', 
+            bbox_to_anchor=(0.5, -0.1), 
+            ncol=min(len(unique_clusters), 5)
+        )
+        fig.supxlabel('Phi')
+        fig.supylabel('Psi')
+        fig.suptitle(f'Clustered Phi/Psi Distributions Queried from PDBMine for Sequence {seq}', y=1.01)
+        plt.tight_layout()
+        plt.show()
+        
+    plot(q, phi_psi_dist_v, precomputed_dists, clusters, seq_ctxt)

@@ -7,7 +7,9 @@ from lib.modules import (
     get_da_for_all_predictions, get_da_for_all_predictions_window, get_da_for_all_predictions_window_ml
 )
 from lib.plotting import (
-    plot_res_vs_da
+    plot_res_vs_da,
+    plot_across_window_clusters,
+    plot_across_window_cluster_medoids
 )
 from lib.ml.models import MLPredictor, MLPredictorWindow
 import math
@@ -160,3 +162,17 @@ class DihedralAdherencePDB(MultiWindowQuery):
         protein_id = self.protein_ids[0]
         pred_name = 'AlphaFold'
         return plot_res_vs_da(self, protein_id, pred_name, highlight_res, limit_quantile, legend_loc, fn, text_loc)
+    
+    def plot_across_window_clusters(self, seq=None, plot_xrays=True, plot_afs=True, n_cluster_lines=50):
+        center_idx_ctxt = self.queries[-1].get_center_idx_pos()
+        winsize_ctxt = self.queries[-1].winsize
+        seqs_for_window = self.seqs[center_idx_ctxt:-(winsize_ctxt - center_idx_ctxt - 1)]
+        seq = seq or seqs_for_window[0]
+        plot_across_window_clusters(self, seq, plot_xrays, plot_afs, n_cluster_lines)
+    
+    def plot_across_window_cluster_medoids(self, seq=None, plot_xrays=False, plot_afs=False, verbose=False, mode_scatter=False):
+        center_idx_ctxt = self.queries[-1].get_center_idx_pos()
+        winsize_ctxt = self.queries[-1].winsize
+        seqs_for_window = self.seqs[center_idx_ctxt:-(winsize_ctxt - center_idx_ctxt - 1)]
+        seq = seq or seqs_for_window[0]
+        plot_across_window_cluster_medoids(self, seq, plot_xrays, plot_afs, verbose, mode_scatter)
