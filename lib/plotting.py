@@ -594,21 +594,25 @@ def plot_across_window_clusters(ins, seq_ctxt, plot_xrays, plot_afs, n_cluster_l
     
     plot(q, seq_ctxt, xrays, afs, clusters, phi_psi_dist_v, precomputed_dists)
 
-def plot_across_window_cluster_medoids(ins, seq_ctxt, plot_xrays=False, plot_afs=False, verbose=False, mode_scatter=False):
+def plot_across_window_cluster_medoids(ins, seq_ctxt, plot_xrays=False, plot_afs=False, verbose=False, mode_scatter=False, cse=30):
     _, info = get_phi_psi_dist(ins.queries, seq_ctxt)
     for j in info:
         print(f'\tWin {j[0]}: {j[1]} - {j[2]} samples')
     phi_psi_dist, phi_psi_dist_v = get_combined_phi_psi_dist(ins, seq_ctxt)
 
     q = ins.queries[0]
-    # xrays = get_xrays_window(ins, q, seq_ctxt)
+    xrays = get_xrays_window(ins, q, seq_ctxt)
+    xrays = xrays.reshape(2, -1)
     # preds = get_preds_window(ins, q, seq_ctxt)
     # afs = get_afs_window(ins, q, seq_ctxt)
 
     precomputed_dists = precompute_dists(phi_psi_dist_v)
-    n_clusters, clusters = find_clusters(precomputed_dists, 20)
+    n_clusters, clusters = find_clusters(precomputed_dists, 20, cse)
     if verbose:
         print(f'Number of clusters: {n_clusters}')
+    if n_clusters == 0:
+        print('No clusters found')
+        return
     precomputed_dists, phi_psi_dist_v, clusters = filter_precomputed_dists(precomputed_dists, phi_psi_dist_v, clusters)
     print(phi_psi_dist_v.shape)
 
@@ -623,7 +627,7 @@ def plot_across_window_cluster_medoids(ins, seq_ctxt, plot_xrays=False, plot_afs
                 print(f'Cluster {cluster} has {cluster_counts[cluster]} members and medoid {medoid}')
         medoids = np.array(medoids).reshape(unique_clusters.shape[0], 2, -1)
 
-        fig, axes = plt.subplots(1, q.winsize, figsize=(q.winsize*3,4), sharey=True)
+        fig, axes = plt.subplots(1, q.winsize, figsize=(q.winsize*3,3.5), sharey=True)
         colors = sns.color_palette('Dark2', len(unique_clusters))
         # if xrays is not None:
             # xrays = xrays.reshape(2, -1)
@@ -660,6 +664,10 @@ def plot_across_window_cluster_medoids(ins, seq_ctxt, plot_xrays=False, plot_afs
                     )
                 if i < q.winsize - 1:
                     add_conn((medoids[j][0,i], medoids[j][1,i]), (medoids[j][0,i+1], medoids[j][1,i+1]), colors[cluster], 2.5, zorder=100)
+            if plot_xrays:
+                axes[i].scatter(xrays[0,i], xrays[1,i], color='red', marker='X', label='X-ray', s=150, zorder=150)
+                if i < q.winsize - 1:
+                    add_conn((xrays[0,i], xrays[1,i]), (xrays[0,i+1], xrays[1,i+1]), 'red', 2.5, zorder=100)
             if i == 0:
                 legend_handles, legend_labels = axes[i].get_legend_handles_labels()
             axes[i].set_xlabel('')
@@ -668,14 +676,30 @@ def plot_across_window_cluster_medoids(ins, seq_ctxt, plot_xrays=False, plot_afs
             axes[i].set_ylim(-180,180)
             axes[i].set_title(f'Residue {seq[i]}')
             axes[i].legend().remove()
+            axes[i].set_xticks(np.arange(-180, 181, 45), minor=True)
+            axes[i].set_yticks(np.arange(-180, 181, 45), minor=True)
+            axes[i].grid(True, linestyle="--", alpha=0.6)
+            axes[i].set_xticks(np.arange(-180, 181, 90))
+            axes[i].set_yticks(np.arange(-180, 181, 90))
+            axes[i].axhline(0, color='black', linewidth=0.75, zorder=0)
+            axes[i].axvline(0, color='black', linewidth=0.75, zorder=0)
         
-        fig.legend(
-            handles=legend_handles, 
-            labels=legend_labels, 
-            loc='lower center', 
-            bbox_to_anchor=(0.5, -0.1), 
-            ncol=min(len(unique_clusters), 5)
-        )
+        if plot_xrays:
+            fig.legend(
+                handles=legend_handles, 
+                labels=legend_labels, 
+                loc='lower center', 
+                bbox_to_anchor=(0.5, -0.1), 
+                ncol=min(len(unique_clusters)+1, 6)
+            )
+        else:
+            fig.legend(
+                handles=legend_handles, 
+                labels=legend_labels, 
+                loc='lower center', 
+                bbox_to_anchor=(0.5, -0.1), 
+                ncol=min(len(unique_clusters), 5)
+            )
         fig.supxlabel('Phi')
         fig.supylabel('Psi')
         fig.suptitle(f'Clustered Phi/Psi Distributions Queried from PDBMine for Sequence {seq}', y=1.01)

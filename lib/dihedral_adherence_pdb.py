@@ -170,9 +170,9 @@ class DihedralAdherencePDB(MultiWindowQuery):
         seq = seq or seqs_for_window[0]
         plot_across_window_clusters(self, seq, plot_xrays, plot_afs, n_cluster_lines)
     
-    def plot_across_window_cluster_medoids(self, seq=None, plot_xrays=False, plot_afs=False, verbose=False, mode_scatter=False):
+    def plot_across_window_cluster_medoids(self, seq=None, plot_xrays=False, plot_afs=False, verbose=False, mode_scatter=False, cse=30):
         center_idx_ctxt = self.queries[-1].get_center_idx_pos()
         winsize_ctxt = self.queries[-1].winsize
         seqs_for_window = self.seqs[center_idx_ctxt:-(winsize_ctxt - center_idx_ctxt - 1)]
         seq = seq or seqs_for_window[0]
-        plot_across_window_cluster_medoids(self, seq, plot_xrays, plot_afs, verbose, mode_scatter)
+        plot_across_window_cluster_medoids(self, seq, plot_xrays, plot_afs, verbose, mode_scatter, cse)

@@ -95,7 +95,7 @@ def find_clusters(precomputed_dists, min_cluster_size=20, cluster_selection_epsi
     # phi_psi_dist['cluster'] = HDBSCAN(min_cluster_size=20, min_samples=5, metric='precomputed').fit(precomputed_dists).labels_
     clusters = HDBSCAN(
         min_cluster_size=min_cluster_size, 
-        # min_samples=5, 
+        min_samples=min(min_cluster_size, precomputed_dists.shape[0]), 
         metric='precomputed', 
         allow_single_cluster=True,
         cluster_selection_epsilon=cluster_selection_epsilon
