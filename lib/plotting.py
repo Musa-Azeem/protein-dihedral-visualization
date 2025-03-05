@@ -341,7 +341,8 @@ def plot_da_vs_gdt_simple(ins, axlims, fn):
 
     sns.set_theme(style="whitegrid")
     sns.set_palette("pastel")
-    fig, ax = plt.subplots(figsize=(8, 6.5))
+    # fig, ax = plt.subplots(figsize=(8, 6.5))
+    fig, ax = plt.subplots(figsize=(8, 5))
 
     sns.scatterplot(data=grouped_preds, x='log_da', y='GDT_TS', ax=ax, marker='o', s=25, edgecolor='b', legend=True)
     ax.scatter(af.log_da, af.GDT_TS, color='red', marker='x', label='AlphaFold', zorder=10)
@@ -352,16 +353,18 @@ def plot_da_vs_gdt_simple(ins, axlims, fn):
         color='red', lw=2, label='Regression Line'
     )
 
-    ax.set_xlabel('Total Dihedral Adherence Score', fontsize=14, labelpad=15)
-    ax.set_ylabel('Prediction GDT', fontsize=14, labelpad=15)
-    ax.set_title(r'GDT ($C_{\alpha}$) vs Total Dihedral Adherence for Each Prediction of '+ins.pdb_code, fontsize=16, pad=20)
-    ax.text(0.83, 0.10, r'$R^2$='+f'{regr.rvalue**2:.3f}', transform=ax.transAxes, fontsize=14,
-            verticalalignment='top', bbox=dict(boxstyle='round,pad=0.5', edgecolor='black', facecolor='white'))
+    ax.set_xlabel(r'Log$_{10}$ Mean Dihedral Adherence', fontsize=12, labelpad=15)
+    ax.set_ylabel('Prediction GDT', fontsize=12, labelpad=15)
+    ax.set_title(r'GDT ($C_{\alpha}$) vs Total Dihedral Adherence for Each Prediction of '+ins.pdb_code, fontsize=14, pad=20)
+    # ax.text(0.83, 0.10, r'$R^2$='+f'{regr.rvalue**2:.3f}', transform=ax.transAxes, fontsize=14,
+    ax.text(0.98, 0.58, r'$R$='+f'{regr.rvalue:.3f}', transform=ax.transAxes, fontsize=12,
+            verticalalignment='top', horizontalalignment='right', bbox=dict(boxstyle='round,pad=0.5', edgecolor='black', facecolor='white'))
     if regr.intercept > 0:
         s = f'y = {regr.slope:.1E}x + {regr.intercept:.1f}'
     else:
         s = f'y = {regr.slope:.1E}x - {-regr.intercept:.1f}'
-    ax.text(.72,.76, s, transform=ax.transAxes, fontsize=12, color='red',
+    ax.text(.98,.69, s, transform=ax.transAxes, fontsize=12, color='red',
+            verticalalignment='top', horizontalalignment='right',
             bbox=dict(boxstyle='round,pad=0.4', edgecolor='red', facecolor='white'))
     if axlims:
         ax.set_xlim(axlims[0][0], axlims[0][1])
@@ -372,7 +375,7 @@ def plot_da_vs_gdt_simple(ins, axlims, fn):
         ax.set_ylim(-0.5, grouped_preds.GDT_TS.max() + 5)
         # ax.set_ylim(0, 105)
 
-    plt.legend(fontsize=12)
+    plt.legend(fontsize=12, loc='upper right')
     plt.tight_layout()
 
     if fn:
