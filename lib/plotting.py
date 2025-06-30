@@ -597,7 +597,7 @@ def plot_across_window_clusters(ins, seq_ctxt, plot_xrays, plot_afs, n_cluster_l
     
     plot(q, seq_ctxt, xrays, afs, clusters, phi_psi_dist_v, precomputed_dists)
 
-def plot_across_window_cluster_medoids(ins, seq_ctxt, plot_xrays=False, plot_afs=False, verbose=False, mode_scatter=False, cse=30):
+def plot_across_window_cluster_medoids(ins, seq_ctxt, plot_xrays=False, plot_afs=False, verbose=False, mode_scatter=False, cse=30, fn=None):
     _, info = get_phi_psi_dist(ins.queries, seq_ctxt)
     for j in info:
         print(f'\tWin {j[0]}: {j[1]} - {j[2]} samples')
@@ -707,6 +707,9 @@ def plot_across_window_cluster_medoids(ins, seq_ctxt, plot_xrays=False, plot_afs
         fig.supylabel('Psi')
         fig.suptitle(f'Clustered Phi/Psi Distributions Queried from PDBMine for Sequence {seq}', y=1.01)
         plt.tight_layout()
-        plt.show()
+        if fn:
+            plt.savefig(fn, bbox_inches='tight', dpi=300)
+        else:
+            plt.show()
         
     plot(q, phi_psi_dist_v, precomputed_dists, clusters, seq_ctxt)
